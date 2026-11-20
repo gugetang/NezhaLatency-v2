@@ -228,9 +228,11 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 /* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只让条本身可点 */
 .nl-home-strip { cursor: pointer; border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
 .nl-home-strip:hover { outline: 1px solid var(--nl-accent); outline-offset: 2px; border-radius: 8px; }
-.nl-region-row { display: flex; align-items: center; gap: 8px; padding: 2px 0; font-size: 0.82rem; color: var(--nl-muted); }
-.nl-region-row .nl-region-name { flex: none; width: 34px; font-weight: 600; color: var(--nl-fg); }
-.nl-region-row .nl-region-vals { margin-left: auto; display: flex; align-items: center; gap: 10px; font-variant-numeric: tabular-nums; }
+/* 首页卡片条：每地区一行，都是截图样式（一行“延迟 xxx ms　丢包率 x.x%”，
+   下面左右两条 10 段分段柱并排：左延迟、右丢包）。条本身是卡片内最底部元素。 */
+.nl-region-row { padding: 6px 0 2px; }
+.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 4px; }
+.nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
 @media (max-width: 640px) {
   #nl-chart { height: 300px; }
   .nl-probe { min-width: 140px; flex: 1 1 40%; }
@@ -330,7 +332,7 @@ var NezhaLatencyConfig = Object.assign({
   // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
   // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
   // localStorage 'nl-strips-enabled'，刷新后保持。按钮本身不开详情面板。
-  attachCards: true,           // 尽力而为：给官方前端的服务器卡片底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包，点条开详情；失败不影响面板）
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时 10 段分段柱，截图样式，点条开详情；失败不影响面板）
   wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
   maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
 }, (window.NezhaLatencyConfig || {}));
@@ -547,7 +549,11 @@ var NezhaLatencyConfig = Object.assign({
             }
             if (gValid) {
               var gBySid = gAgg[sv.server_id] || (gAgg[sv.server_id] = {});
-              var gr = gBySid[gPrefix] || (gBySid[gPrefix] = { lastDelay: null, lastTs: 0, up1h: 0, down1h: 0 });
+              var gr = gBySid[gPrefix] || (gBySid[gPrefix] = { lastDelay: null, lastTs: 0, up1h: 0, down1h: 0, buckets: null });
+              if (!gr.buckets) {
+                gr.buckets = [];
+                for (var gbi = 0; gbi < 10; gbi++) gr.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
+              }
               gPts.forEach(function (p) {
                 if (!p) return;
                 var m = tsToMs(p.ts);
@@ -555,6 +561,16 @@ var NezhaLatencyConfig = Object.assign({
                   if (p.status === 1) gr.up1h++; else if (p.status === 0) gr.down1h++;
                 }
                 if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0 && m != null && m > gr.lastTs) { gr.lastTs = m; gr.lastDelay = p.delay; }
+                // 该地区分段柱：最近 24 小时分 10 桶（每桶 2.4 小时），只计有效点
+                // （status=1 且 delay>0）；桶内无有效点时延迟/丢包均为 null，渲染成灰段
+                if (m != null) {
+                  var gidx = Math.floor((m - dayStart) / bucketMs);
+                  if (gidx >= 0 && gidx <= 9) {
+                    var gbk = gr.buckets[gidx];
+                    if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0) { gbk.dSum += p.delay; gbk.dN++; }
+                    if (p.status === 1) gbk.up++; else if (p.status === 0) gbk.down++;
+                  }
+                }
               });
             }
           }
@@ -585,7 +601,13 @@ var NezhaLatencyConfig = Object.assign({
           groups[prefix] = {
             delay: (gr && gr.lastTs && (nowMs - gr.lastTs) <= REGION_STALE_MS) ? gr.lastDelay : null,
             loss: (gr && tot) ? (gr.down1h / tot) * 100 : null,
-            ts: (gr && gr.lastTs) || null, n1h: tot
+            ts: (gr && gr.lastTs) || null, n1h: tot,
+            // 分段柱：该地区最近 24 小时 10 桶（每桶 2.4 小时），每桶延迟 = 桶内有效点
+            // 平均延迟，丢包 = 桶内 down/(up+down)；桶内无有效点时该段为 null（灰段）
+            buckets: (gr && gr.buckets) ? gr.buckets.map(function (bk) {
+              var btot = bk.up + bk.down;
+              return { delay: bk.dN ? bk.dSum / bk.dN : null, loss: btot ? (bk.down / btot) * 100 : null };
+            }) : []
           };
         });
         out[sid].groups = groups;
@@ -962,13 +984,16 @@ var NezhaLatencyConfig = Object.assign({
   }
   function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
   // ---- 首页服务器卡片延迟条：地区实时值（尽力而为） ----
-  // 每张卡底部按地区各一行（行数 = 后端服务分组数，动态变），每行“实时延迟 +
-  // 最近 1 小时丢包率”。取数口径（见 loadServerLatency）：每组取组内各服务
+  // 每张卡内最底部按地区各一行（行数 = 后端服务分组数，动态变），每行都是截图
+  // 样式：第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右两条 10 段分段柱
+  // 并排（左延迟、右丢包）。取数口径（见 loadServerLatency）：每组取组内各服务
   // history 里最近一个有效数据点做当前延迟（status=1 且 delay>0，超过 10 分钟
-  // 视为过期显示 --），丢包 = 最近 1 小时内该组点的 down/(up+down)；只有近期
-  // 有效的服务才计入组内统计，失联的 v6 不混进组里；某组全部服务无效该行显示
-  // --。24h 两条分段历史柱已去掉：多行实时值 + 柱子在卡片宽度内容纳不下，实时
-  // 值优先；面板里的服务卡片仍保留分段柱，面板服务器表仍保留 24h 数值。
+  // 视为过期显示 --），丢包 = 最近 1 小时内该组点的 down/(up+down)；分段柱 =
+  // 该地区最近 24 小时 10 桶（每桶 2.4 小时），每桶延迟 = 桶内有效点平均延迟，
+  // 丢包 = 桶内 down/(up+down)，桶内无有效点时该段为灰色。只计近期有效的服务，
+  // 失联的 v6 不混进组里；某组全部服务无效该行显示 --。面板里的服务卡片仍保留
+  // 分段柱，面板服务器表仍保留 24h 数值。条挂在挂载元素的最末尾（见
+  // attachCardStrips），React 重建后补挂也会把它挪回最底部。
   // 只让条本身可点：点某张卡的条打开该服务器的详情面板；条的点击会
   // preventDefault + stopPropagation，不劫持整张卡片的点击（卡片本身点开仍是
   // 官方服务器详情页）。
@@ -980,12 +1005,29 @@ var NezhaLatencyConfig = Object.assign({
   // React 每 2 秒 WS 推送都会重建卡片 DOM，所以除 5 秒轮询外再加
   // MutationObserver 监听 #root（见 init 的 watchHomeCards）；数据未到先挂
   // -- 占位条，数据到了按 key 更新内容，不重复创建。
+  // 地区名前缀与运营商对应（服务名 SCCM/SCCU/SCCT = 四川移动/联通/电信）：
+  // SCCM = 移动，SCCU = 联通，SCCT = 电信；其他前缀只显示前缀本身，不编中文名
+  function regionLabel(prefix) {
+    var map = { SCCM: '移动', SCCU: '联通', SCCT: '电信' };
+    return map[prefix] ? map[prefix] + ' ' + prefix : prefix;
+  }
+  // 截图样式：每地区一行，第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右
+  // 两条 10 段分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
   function stripRegionRowHTML(prefix, g, online) {
     var d = online ? (g && g.delay) : null;
     var l = online ? (g && g.loss) : null;
-    return '<div class="nl-region-row"><span class="nl-region-name">' + esc(prefix) + '</span>' +
-      '<span class="nl-region-vals"><span>延迟 <span class="nl-pill ' + latencyClass(d) + '">' + fmtMs(d) + '</span></span>' +
-      '<span>丢包率 <span class="nl-pill ' + lossClass(l) + '">' + fmtPct(l) + '</span></span></span></div>';
+    var bk = (g && g.buckets) || [];
+    var barsLat = '', barsLoss = '';
+    for (var i = 0; i < 10; i++) {
+      var b = bk[i] || {};
+      barsLat += '<i class="' + latencyClass(b.delay) + '"></i>';
+      barsLoss += '<i class="' + lossClass(b.loss) + '"></i>';
+    }
+    var dTxt = (d == null || isNaN(d)) ? '--' : Math.round(d) + ' ms';
+    return '<div class="nl-region-row">' +
+      '<div class="nl-card-strip-head"><span><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span> · 延迟 <b>' + dTxt + '</b></span><span>丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
+      '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
+      '</div>';
   }
   function stripInnerHTML(h, online) {
     h = h || {};
@@ -1055,6 +1097,8 @@ var NezhaLatencyConfig = Object.assign({
     (state.regionGroups || []).forEach(function (prefix) {
       var g = (h.groups || {})[prefix] || {};
       parts.push(g.delay == null ? '' : Math.round(g.delay), g.loss == null ? '' : g.loss.toFixed(1));
+      // 分段柱变化也要触发重绘：每桶延迟四舍五入拼进 key
+      parts.push(((g.buckets || []).map(function (bk) { return bk.delay == null ? '' : Math.round(bk.delay); }).join(',')));
     });
     return parts.join('|');
   }
@@ -1089,7 +1133,9 @@ var NezhaLatencyConfig = Object.assign({
         if (strip) {
           if (strip._nlKey !== key) { strip.innerHTML = stripInnerHTML(h, online); strip._nlKey = key; }
           strip._nlSid = c.sid; bindStripClick(strip); // 重建/克隆残留的条可能丢了监听，复用时补绑
-          if (strip.parentNode !== c.mount) c.mount.appendChild(strip); // 模式切换后挪到正确位置
+          // 条必须是挂载元素的最底部：位置不对（模式切换、React 重建后又插了新
+          // 节点）就挪到末尾；appendChild 已存在的节点会先把它移走再追加
+          if (strip.parentNode !== c.mount || c.mount.lastChild !== strip) c.mount.appendChild(strip);
           return;
         }
         strip = document.createElement('div');
