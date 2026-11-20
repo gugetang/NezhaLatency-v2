@@ -189,12 +189,14 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-bars i.a { background: var(--nl-amber); }
 .nl-bars i.r { background: var(--nl-red); }
 .nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }
-/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排 */
-.nl-card-strip { margin-top: 8px; }
-.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; color: var(--nl-muted); }
-.nl-card-strip-head b { color: var(--nl-fg); font-size: 1rem; font-variant-numeric: tabular-nums; }
-.nl-card-strip-bars { display: flex; gap: 12px; margin-top: 6px; }
-.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; }
+/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排
+   尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，
+   下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */
+.nl-card-strip { margin-top: 6px; }
+.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }
+.nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+.nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }
+.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }
 /* 服务器表 */
 .nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
 .nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
@@ -230,8 +232,8 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-home-strip:hover { outline: 1px solid var(--nl-accent); outline-offset: 2px; border-radius: 8px; }
 /* 首页卡片条：每地区一行，都是截图样式（一行“延迟 xxx ms　丢包率 x.x%”，
    下面左右两条 10 段分段柱并排：左延迟、右丢包）。条本身是卡片内最底部元素。 */
-.nl-region-row { padding: 6px 0 2px; }
-.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 4px; }
+.nl-region-row { padding: 4px 0 1px; }
+.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
 @media (max-width: 640px) {
   #nl-chart { height: 300px; }
@@ -428,6 +430,7 @@ var NezhaLatencyConfig = Object.assign({
     servers: [],               // WS 来的服务器
     services: [],              // [{id, name, type, ...}]，来自 /api/v1/service
     regionGroups: [],          // 地区列表：按 service_name 前缀动态分组（见 loadServices），后台增删服务时跟着变
+    regionLabel: {},           // 地区行名：前缀 -> 后端服务实际名称（见 loadServices），如 SCCM -> SCCM-v4
     svcStats: {},              // serviceId -> {avgDelay, uptime, totalUp, totalDown}
     histByServer: {},          // serverId -> {avgDelay, loss, lastDelay, up, down}
     range: CFG.defaultRange,
@@ -461,8 +464,8 @@ var NezhaLatencyConfig = Object.assign({
 
   // ---- 首页卡片条：地区动态分组取数口径 ----
   // 地区不写死：从后端 /api/v1/service 拿到的服务列表按 service_name 前缀动态
-  // 分组（同一前缀归为一个地区，如 SCCM-v4 与 SCCM-v6 同属 SCCM 组；行名直接用
-  // 前缀，不另编名字）。后台增删服务时分组跟着变：新增一组服务卡片多一行，删掉
+  // 分组（同一前缀归为一个地区，如 SCCM-v4 与 SCCM-v6 同属 SCCM 组；行名取该组
+  // 后端服务的实际 service_name，见 regionLabel）。后台增删服务时分组跟着变：新增一组服务卡片多一行，删掉
   // 就少一行，不留死数据（分组存在 state.regionGroups，见 loadServices）。
   // 每组数据来自该组各服务的 history：实时延迟取组内最近一个有效数据点
   // （status=1 且 delay>0；超过 10 分钟视为过期显示 --），丢包 = 最近 1 小时内
@@ -493,6 +496,17 @@ var NezhaLatencyConfig = Object.assign({
       state.services.forEach(function (s) {
         var p = serviceRegion(s);
         if (p && state.regionGroups.indexOf(p) === -1) state.regionGroups.push(p);
+      });
+      // 地区行名 = 后端服务实际名称，不写死、不编中文名：组里有 -v4 服务就用它的
+      // service_name（如 SCCM 组显示 SCCM-v4），没有 -v4 就用组里第一个服务
+      // （services 已按名字排过序）的 service_name；行名进 stripKey，服务增减
+      // 改名时条会重绘
+      state.regionLabel = {};
+      state.services.forEach(function (s) {
+        var p = serviceRegion(s), nm = (s && s.service_name) || '';
+        if (!p || !nm) return;
+        if (!state.regionLabel[p]) state.regionLabel[p] = nm;
+        if (nm === p + '-v4') state.regionLabel[p] = nm;
       });
       state.services.forEach(function (s) {
         var up = s.total_up || 0, down = s.total_down || 0, tot = up + down;
@@ -1005,11 +1019,11 @@ var NezhaLatencyConfig = Object.assign({
   // React 每 2 秒 WS 推送都会重建卡片 DOM，所以除 5 秒轮询外再加
   // MutationObserver 监听 #root（见 init 的 watchHomeCards）；数据未到先挂
   // -- 占位条，数据到了按 key 更新内容，不重复创建。
-  // 地区名前缀与运营商对应（服务名 SCCM/SCCU/SCCT = 四川移动/联通/电信）：
-  // SCCM = 移动，SCCU = 联通，SCCT = 电信；其他前缀只显示前缀本身，不编中文名
+  // 行名取后端服务的实际名称：组里有 -v4 服务就用它的 service_name
+  // （如 SCCM 组显示 SCCM-v4），没有 -v4 就用组里第一个服务的 service_name；
+  // 不写死名字、不编中文名；服务列表未到或组里无服务时退回前缀本身
   function regionLabel(prefix) {
-    var map = { SCCM: '移动', SCCU: '联通', SCCT: '电信' };
-    return map[prefix] ? map[prefix] + ' ' + prefix : prefix;
+    return (state.regionLabel && state.regionLabel[prefix]) || prefix;
   }
   // 截图样式：每地区一行，第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右
   // 两条 10 段分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
@@ -1096,6 +1110,7 @@ var NezhaLatencyConfig = Object.assign({
     var parts = [sid, online ? '1' : '0'];
     (state.regionGroups || []).forEach(function (prefix) {
       var g = (h.groups || {})[prefix] || {};
+      parts.push(regionLabel(prefix)); // 行名（后端服务名）变了也要重绘
       parts.push(g.delay == null ? '' : Math.round(g.delay), g.loss == null ? '' : g.loss.toFixed(1));
       // 分段柱变化也要触发重绘：每桶延迟四舍五入拼进 key
       parts.push(((g.buckets || []).map(function (bk) { return bk.delay == null ? '' : Math.round(bk.delay); }).join(',')));
