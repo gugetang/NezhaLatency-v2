@@ -161,12 +161,18 @@ html.dark {
 .nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }
 .nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }
 /* 分段历史条（Komari 风格：30 段，绿/黄/红） */
-.nl-bars { display: flex; gap: 2px; height: 8px; margin: 4px 0 2px; }
-.nl-bars i { flex: 1; border-radius: 2px; background: var(--nl-grey); min-width: 2px; }
+.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }
+.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }
 .nl-bars i.g { background: var(--nl-green); }
 .nl-bars i.a { background: var(--nl-amber); }
 .nl-bars i.r { background: var(--nl-red); }
 .nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }
+/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排 */
+.nl-card-strip { margin-top: 8px; }
+.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; color: var(--nl-muted); }
+.nl-card-strip-head b { color: var(--nl-fg); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.nl-card-strip-bars { display: flex; gap: 12px; margin-top: 6px; }
+.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; }
 /* 服务器表 */
 .nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
 .nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
@@ -291,7 +297,7 @@ var NezhaLatencyConfig = Object.assign({
   ],
   defaultRange: '1d',
   thresholds: {
-    latencyGreen: 100,         // 延迟 <100ms 绿色（与官方前端一致）
+    latencyGreen: 200,         // 延迟 <200ms 绿色（Komari 截图：RakSmart 183ms 为绿色，所以绿线必须 >183，取 200；不是官方前端的 100）
     latencyAmber: 300,         // 延迟 <300ms 黄色，否则红色
     lossGreen: 1,              // 丢包 <1% 绿色；正常率 >=99% 绿色，>=95% 黄色，否则红色
     lossAmber: 5
@@ -525,23 +531,32 @@ var NezhaLatencyConfig = Object.assign({
     wrap.innerHTML = state.services.map(function (s) {
       var st = state.svcStats[s._id] || {};
       var delays = s.delay || [], ups = s.up || [], downs = s.down || [];
-      var barsLat = '', barsLoss = '';
-      for (var i = 0; i < 30; i++) {
-        var d = delays[i], u = ups[i], dn = downs[i], tot = (u || 0) + (dn || 0);
-        barsLat += '<i class="' + latencyClass(typeof d === 'number' ? d : null) + '" title="第 ' + (i + 1) + ' 天：延迟 ' + fmtMs(typeof d === 'number' ? d : null) + '"></i>';
-        var upPct = tot ? (u / tot) * 100 : null;
-        barsLoss += '<i class="' + uptimeClass(upPct) + '" title="第 ' + (i + 1) + ' 天：正常率 ' + fmtPct(upPct) + '"></i>';
-      }
+      // Komari 截图形式：只取最近 10 个点，左右两条分段条并排（左延迟、右丢包），每条约 10 段
+      var last10 = delays.slice(-10), last10Up = ups.slice(-10), last10Down = downs.slice(-10);
+      var lastDelay = null;
+      for (var k = delays.length - 1; k >= 0; k--) { if (typeof delays[k] === 'number') { lastDelay = delays[k]; break; } }
+      var curDelay = lastDelay != null ? lastDelay : st.avgDelay;
       var uptime = st.uptime;
+      var curLoss = uptime == null ? null : 100 - uptime;
+      var barsLat = '', barsLoss = '';
+      for (var i = 0; i < 10; i++) {
+        var d = last10[i], u = last10Up[i], dn = last10Down[i], tot = (u || 0) + (dn || 0);
+        barsLat += '<i class="' + latencyClass(typeof d === 'number' ? d : null) + '" title="最近第 ' + (i + 1) + ' 天：延迟 ' + fmtMs(typeof d === 'number' ? d : null) + '"></i>';
+        var upPct = tot ? (u / tot) * 100 : null;
+        barsLoss += '<i class="' + uptimeClass(upPct) + '" title="最近第 ' + (i + 1) + ' 天：正常率 ' + fmtPct(upPct) + '"></i>';
+      }
       return '<div class="nl-svc" data-svc="' + s._id + '">' +
         '<div class="nl-svc-top"><span class="nl-name">' + esc(s.service_name || ('服务 ' + s._id)) + '</span>' +
         '<span class="nl-type">' + typeName(s.type) + '</span>' +
         '<span class="nl-up nl-pill ' + uptimeClass(uptime) + '">' + (uptime == null ? '--' : uptime.toFixed(1) + '% 正常') + '</span></div>' +
         '<div class="nl-svc-metrics"><span>平均延迟 <b>' + fmtMs(st.avgDelay) + '</b></span>' +
-        '<span>丢包 <b>' + fmtPct(uptime == null ? null : 100 - uptime) + '</b></span>' +
+        '<span>丢包 <b>' + fmtPct(curLoss) + '</b></span>' +
         '<span>成功 ' + (st.totalUp || 0) + ' / 失败 ' + (st.totalDown || 0) + '</span></div>' +
-        '<div class="nl-bars">' + barsLat + '</div><div class="nl-bars-label"><span>延迟 · 30 天</span><span>绿 &lt;100ms · 黄 &lt;300ms · 红 ≥300ms</span></div>' +
-        '<div class="nl-bars">' + barsLoss + '</div><div class="nl-bars-label"><span>正常率 · 30 天</span><span>绿 ≥99% · 黄 ≥95% · 红 &lt;95%</span></div>' +
+        '<div class="nl-card-strip">' +
+        '<div class="nl-card-strip-head"><span>延迟 <b>' + fmtMs(curDelay) + '</b></span><span>丢包率 <b>' + fmtPct(curLoss) + '</b></span></div>' +
+        '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
+        '<div class="nl-bars-label"><span>延迟 · 最近 10 天</span><span>绿 &lt;200ms · 黄 &lt;300ms · 红 ≥300ms</span></div>' +
+        '</div>' +
         '</div>';
     }).join('');
     wrap.querySelectorAll('.nl-svc').forEach(function (el) {
