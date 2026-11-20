@@ -1,0 +1,852 @@
+<!--
+  NezhaLatency v2 —— 延迟 / 丢包面板（Komari 参考站风格，适配 Nezha v2）
+  ============================================================================
+  参考：https://komari.alicloud.ru/（Komari Monitor + Nezha 主题）
+    首页卡片底部：当前延迟 + 丢包率 + 两条分段历史条（绿/黄/红，左延迟右丢包）
+    详情页 Network 标签：多探针平均延迟/丢包、双轴图（左延迟 ms / 右丢包 %）、
+    时间范围、Peak cut 开关、可点击图例；离线显示 -- / --，探针不可达时丢包 100%
+  适配目标：nezhahq/nezha v2（dashboard main，官方用户前端 hamster1963/nezha-dash-v2 v2.7.0）
+    注意：v2 的仪表盘版本号在构建时注入，源码里默认是 "debug"；
+    这里说的 v2.7.0 是前端清单 service/singleton/frontend-templates.yaml 锁定的用户前端版本。
+    v1 的接口不要直接套用到 v2 —— 本文件只用下面“已验证接口”列出的 v2 接口。
+
+  已验证接口（nezhahq/nezha main，commit ff43a43，2026-11-20）：
+    GET  /api/v1/ws/server               公开（force_auth=false 时游客可用），WebSocket，每 2s 推
+                                          {now, online, servers:[{id,name,public_note,display_index,
+                                          host,state,country_code,last_active}]}
+                                          model/server_api.go:5-21；cmd/dashboard/controller/ws.go
+    GET  /api/v1/service                 公开，ServiceResponse{services: map[id]ServiceResponseItem,
+                                          cycle_transfer_stats}；每项含 service_name, current_up,
+                                          current_down, total_up, total_down, delay[30], up[30], down[30]
+                                          model/service_api.go:24-33
+    GET  /api/v1/service/:id/history     公开，?period=1d|7d|30d（默认 1d），游客只能查 1d
+                                          返回 ServiceHistoryResponse{service_id, service_name,
+                                          servers:[{server_id, server_name, stats:{avg_delay,
+                                          up_percent, total_up, total_down, data_points:[{ts, delay,
+                                          status}]}}]}  model/service_history_api.go:12-37
+    GET  /api/v1/server/:id/service      公开，?period=1d|7d|30d，游客只能查 1d
+                                          返回 []ServiceInfos{monitor_id, server_id, monitor_name,
+                                          server_name, display_index, created_at:[ms], avg_delay:[]}
+                                          model/service_history_api.go:4-11
+    GET  /api/v1/profile                 仅登录（JWT，PAT 被禁），200 + success:true = 已登录
+                                          用于判断游客/会员；游客调用会 401，这是正常的
+    GET  /api/v1/setting                 游客可读（精简版），本文件不依赖它，仅作参考
+    GET  /api/v1/server                  仅登录，游客不要用；服务器列表请走上面的 WebSocket
+  重要：Nezha v2 里没有任何一个字段叫 loss / 丢包。丢包率一律由 up/down
+    计数推导：loss% = 100 - up_percent = down / (up + down) * 100。
+    历史只有 1d / 7d / 30d 三档 —— Komari 的 1h / 6h / 12h / 3d 在 v2 API
+    里不存在（period 参数会直接报错），所以本文件不提供这几档，见 README。
+  存储：延迟/状态写进 VictoriaMetrics TSDB（nezha_service_delay /
+    nezha_service_status，默认保留 30 天），仅当 tsdb.data_path 配置后才
+    启用；未启用时走 SQLite ServiceHistory 表。1d 约 30s/点，7d 约 30 分钟/点，
+    30d 约 2 小时/点（pkg/tsdb/query.go）。
+
+  安装（Nezha v2 Dashboard）：
+    后台 /dashboard/ → 设置 → 自定义代码（custom_code）→ 把本文件全部内容
+    粘贴进去保存。用户前端（nezha-dash-v2）加载 /api/v1/setting 后用
+    InjectContext(custom_code) 按文档顺序注入：样式与链接进 head，
+    脚本按序执行，其它节点进 body。所以本文件必须是“样式 + 节点 +
+    脚本”一体的单文件。注入后页面右下角会出现“延迟”悬浮按钮，点开即面板。
+  配置：只改 script 开头的 CONFIG 对象即可，不用动其它代码；也可以在页面
+    里先定义 window.NezhaLatencyConfig 再加载本文件，会与默认配置合并。
+  依赖：ECharts 5（CDN，jsdelivr 失败时自动换 unpkg；两个都失败时图表区
+    降级为聚合数据表）。其余无外部库。
+-->
+<style>
+/* ================= 1. Nezha v2 主题变量适配 =================
+   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：
+   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /
+   --card / --primary / --muted-foreground / --border / --destructive /
+   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +
+   localStorage "vite-ui-theme" 控制。这里把它们映射成 --nl-* 变量，并给出去掉
+   Nezha 环境也能用的回退值。 */
+:root {
+  --nl-bg: hsl(var(--background, 0 0% 98%));
+  --nl-card: hsl(var(--card, 0 0% 100%));
+  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));
+  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));
+  --nl-border: hsl(var(--border, 20 5.9% 90%));
+  --nl-accent: hsl(var(--primary, 24 9.8% 10%));
+  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));
+  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));
+  --nl-shadow: rgba(0, 0, 0, 0.12);
+  --nl-green: #22c55e;
+  --nl-amber: #f59e0b;
+  --nl-red: #ef4444;
+  --nl-grey: #9ca3af;
+  --nl-accent-solid: #3b82f6;
+}
+html.dark {
+  --nl-bg: hsl(var(--background, 30 15% 8%));
+  --nl-card: hsl(var(--card, 20 14.3% 4.1%));
+  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));
+  --nl-shadow: rgba(0, 0, 0, 0.45);
+}
+/* ================= 2. 悬浮按钮 ================= */
+#nl-fab {
+  position: fixed; right: 20px; bottom: 20px; z-index: 1040;
+  display: flex; align-items: center; gap: 6px;
+  padding: 10px 16px; border-radius: 999px; cursor: pointer;
+  background-color: var(--nl-card); color: var(--nl-fg);
+  border: 1px solid var(--nl-border);
+  box-shadow: 0 4px 16px var(--nl-shadow);
+  font-size: 0.9rem; font-weight: 600;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+#nl-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--nl-shadow); }
+#nl-fab .nl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--nl-green); }
+#nl-fab .nl-dot.bad { background: var(--nl-red); }
+/* ================= 3. 面板 ================= */
+#nl-modal-overlay {
+  position: fixed; inset: 0; z-index: 2000;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: none; align-items: flex-start; justify-content: center;
+  overflow-y: auto; padding: 24px 12px;
+}
+#nl-modal-overlay.show { display: flex; }
+#nl-modal {
+  width: min(1060px, 96vw);
+  background: var(--nl-card); color: var(--nl-fg);
+  border: 1px solid var(--nl-border); border-radius: 16px;
+  box-shadow: 0 16px 48px var(--nl-shadow);
+  overflow: hidden;
+}
+.nl-modal-head {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
+  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);
+}
+.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }
+.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }
+.nl-modal-head .nl-spacer { flex: 1; }
+.nl-btn {
+  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);
+  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;
+}
+.nl-btn:hover { border-color: var(--nl-accent); }
+.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }
+.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }
+.nl-body { padding: 16px 18px 20px; }
+.nl-notice {
+  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;
+  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);
+  color: var(--nl-fg); font-size: 0.83rem;
+}
+.nl-notice.show { display: block; }
+.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }
+.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
+.nl-stat {
+  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;
+  padding: 10px 14px; background: var(--nl-bg);
+}
+.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }
+.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }
+.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }
+.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }
+.nl-section-title:first-child { margin-top: 0; }
+/* 服务卡片 */
+.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
+.nl-svc {
+  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;
+  background: var(--nl-bg); cursor: pointer;
+}
+.nl-svc:hover { border-color: var(--nl-accent); }
+.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }
+.nl-svc-top { display: flex; align-items: center; gap: 8px; }
+.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }
+.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }
+.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }
+.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }
+/* 分段历史条（Komari 风格：30 段，绿/黄/红） */
+.nl-bars { display: flex; gap: 2px; height: 8px; margin: 4px 0 2px; }
+.nl-bars i { flex: 1; border-radius: 2px; background: var(--nl-grey); min-width: 2px; }
+.nl-bars i.g { background: var(--nl-green); }
+.nl-bars i.a { background: var(--nl-amber); }
+.nl-bars i.r { background: var(--nl-red); }
+.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }
+/* 服务器表 */
+.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
+.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
+.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }
+.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }
+.nl-table tr:last-child td { border-bottom: none; }
+.nl-table tbody tr { cursor: pointer; }
+.nl-table tbody tr:hover { background: var(--nl-bg); }
+.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }
+.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }
+.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }
+.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }
+.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }
+.nl-num { font-variant-numeric: tabular-nums; }
+/* 探针按钮与图表 */
+.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.nl-probe {
+  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;
+  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;
+}
+.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }
+.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }
+.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }
+#nl-chart { width: 100%; height: 360px; margin-top: 8px; }
+.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }
+.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }
+.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }
+.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }
+.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }
+/* 卡片角标（尽力而为的 DOM 增强，见 README） */
+.nl-chip {
+  display: inline-flex; gap: 4px; align-items: center;
+  font-size: 0.72rem; font-weight: 600; margin-left: 6px; white-space: nowrap;
+}
+@media (max-width: 640px) {
+  #nl-fab { right: 12px; bottom: 12px; padding: 9px 13px; }
+  #nl-chart { height: 300px; }
+  .nl-probe { min-width: 140px; flex: 1 1 40%; }
+}
+</style>
+
+<!-- 悬浮按钮 -->
+<button id="nl-fab" type="button" title="查看延迟 / 丢包">
+  <span class="nl-dot" id="nl-fab-dot"></span><span>延迟</span><span id="nl-fab-summary" style="font-weight:400;opacity:.75"></span>
+</button>
+<!-- 面板 -->
+<div id="nl-modal-overlay">
+  <div id="nl-modal" role="dialog" aria-label="延迟 / 丢包">
+    <div class="nl-modal-head">
+      <h2>延迟 / 丢包</h2><span class="nl-sub" id="nl-modal-sub">Nezha v2 · 探针监控</span>
+      <span class="nl-spacer"></span>
+      <span id="nl-range-wrap" style="display:flex;gap:6px"></span>
+      <button class="nl-btn" id="nl-peak-btn" type="button" title="把延迟高于 P95 的尖峰截断到 P95，让曲线更易读">Peak cut：开</button>
+      <button class="nl-btn" id="nl-refresh-btn" type="button">刷新</button>
+      <button class="nl-btn nl-close" id="nl-close-btn" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="nl-body">
+      <div class="nl-notice" id="nl-notice"></div>
+      <div class="nl-stats" id="nl-stats"></div>
+      <div class="nl-section-title">服务总览 <span style="font-weight:400;color:var(--nl-muted);font-size:.78rem">（来自 GET /api/v1/service，30 天日粒度）</span></div>
+      <div class="nl-svc-grid" id="nl-services"><div class="nl-empty">正在加载服务数据…</div></div>
+      <div class="nl-section-title">服务器 <span style="font-weight:400;color:var(--nl-muted);font-size:.78rem">（当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率）</span></div>
+      <div class="nl-table-wrap"><table class="nl-table">
+        <thead><tr><th>服务器</th><th>状态</th><th>当前延迟</th><th>平均延迟 24h</th><th>丢包 24h</th><th>探针</th></tr></thead>
+        <tbody id="nl-servers"><tr><td colspan="6" class="nl-empty">正在加载服务器数据…</td></tr></tbody>
+      </table></div>
+      <div id="nl-detail" style="display:none">
+        <div class="nl-section-title" id="nl-detail-title">详情</div>
+        <div class="nl-probes" id="nl-probes"></div>
+        <div id="nl-chart"></div>
+        <div id="nl-chart-fallback"></div>
+        <div class="nl-hint" id="nl-detail-hint"></div>
+      </div>
+      <div class="nl-hint">
+        数据来源：Nezha v2 服务探针（HTTP / ICMP / TCP）。延迟为探针实测往返毫秒数；
+        丢包率由探针成功/失败计数推导，Nezha v2 不直接存储丢包字段。
+        时间范围只有 24h / 7d / 30d 三档——这是 v2 API 的限制（period 只接受
+        1d / 7d / 30d），Komari 的 1h / 6h / 12h / 3d 在 v2 里查不到。
+        游客仅可查看 24h，7d / 30d 需要登录。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ================= 2. ECharts 加载（jsdelivr 失败自动换 unpkg，都失败则降级为数据表） =================
+(function () {
+  var NL_ECHARTS_CDNS = [
+    'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js',
+    'https://unpkg.com/echarts@5.5.0/dist/echarts.min.js'
+  ];
+  window.__nlLoadECharts = function (cb) {
+    if (window.echarts) return cb(true);
+    var i = 0;
+    function next() {
+      if (i >= NL_ECHARTS_CDNS.length) return cb(false);
+      var s = document.createElement('script');
+      s.src = NL_ECHARTS_CDNS[i++]; s.async = true;
+      var done = false;
+      s.onload = function () { if (!done) { done = true; cb(!!window.echarts); } };
+      s.onerror = function () { if (!done) { done = true; next(); } };
+      setTimeout(function () { if (!done) { done = true; next(); } }, 8000);
+      document.head.appendChild(s);
+    }
+    next();
+  };
+})();
+</script>
+<script>
+// ================= 3. 配置（只改这里） =================
+var NezhaLatencyConfig = Object.assign({
+  apiBase: '',                 // '' = 与当前页面同源（custom_code 注入时请保持 ''）；独立测试时可填 https://nezha.example.com（需服务端允许 CORS）
+  wsServerUrl: '/api/v1/ws/server',
+  serviceApi: '/api/v1/service',
+  profileApi: '/api/v1/profile',
+  refreshSec: 30,              // 自动刷新间隔（秒），0 = 不自动刷新
+  ranges: [                    // 注意：v2 API 只支持 1d / 7d / 30d；24h 即 1d
+    { label: '24h', value: '1d' },
+    { label: '7d',  value: '7d' },
+    { label: '30d', value: '30d' }
+  ],
+  defaultRange: '1d',
+  thresholds: {
+    latencyGreen: 100,         // 延迟 <100ms 绿色（与官方前端一致）
+    latencyAmber: 300,         // 延迟 <300ms 黄色，否则红色
+    lossGreen: 1,              // 丢包 <1% 绿色；正常率 >=99% 绿色，>=95% 黄色，否则红色
+    lossAmber: 5
+  },
+  peakCut: { enabled: true, percentile: 95 },  // 默认开启 Peak cut
+  showFab: true,               // 是否显示右下角“延迟”悬浮按钮
+  attachCards: true,           // 尽力而为：尝试给官方前端的服务器卡片加延迟角标（失败不影响面板）
+  wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
+  maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
+}, (window.NezhaLatencyConfig || {}));
+</script>
+<script>
+(function () {
+  'use strict';
+  var CFG = window.NezhaLatencyConfig;
+  var $ = function (id) { return document.getElementById(id); };
+  function apiUrl(path) {
+    if (!CFG.apiBase) return path;
+    return String(CFG.apiBase).replace(/\/$/, '') + path;
+  }
+  function wsUrl(path) {
+    if (CFG.apiBase) {
+      var u = new URL(path, CFG.apiBase);
+      u.protocol = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      return u.toString();
+    }
+    return (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + path;
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function fmtMs(v) { return v == null || isNaN(v) ? '--' : Math.round(v) + 'ms'; }
+  function fmtPct(v) { return v == null || isNaN(v) ? '--' : v.toFixed(1) + '%'; }
+  function latencyClass(v) {
+    if (v == null || isNaN(v)) return 'grey';
+    if (v < CFG.thresholds.latencyGreen) return 'g';
+    if (v < CFG.thresholds.latencyAmber) return 'a';
+    return 'r';
+  }
+  function lossClass(v) { // v = loss %
+    if (v == null || isNaN(v)) return 'grey';
+    if (v < CFG.thresholds.lossGreen) return 'g';
+    if (v < CFG.thresholds.lossAmber) return 'a';
+    return 'r';
+  }
+  function uptimeClass(u) { // u = uptime %，与官方前端阈值一致
+    if (u == null || isNaN(u)) return 'grey';
+    if (u >= 99) return 'g';
+    if (u >= 95) return 'a';
+    return 'r';
+  }
+  function showNotice(msg, isErr) {
+    var n = $('nl-notice');
+    if (!msg) { n.className = 'nl-notice'; n.textContent = ''; return; }
+    n.className = 'nl-notice show' + (isErr ? ' err' : '');
+    n.textContent = msg;
+  }
+  function isDark() {
+    return document.documentElement.classList.contains('dark') ||
+      (function () { try { return localStorage.getItem('vite-ui-theme') === 'dark'; } catch (e) { return false; } })() ||
+      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches &&
+        !document.documentElement.classList.contains('light'));
+  }
+  function themeColors() {
+    var cs = getComputedStyle(document.documentElement);
+    function v(name, fb) { var x = cs.getPropertyValue(name).trim(); return x ? 'hsl(' + x + ')' : fb; }
+    return {
+      fg: v('--foreground', '#111'), muted: v('--muted-foreground', '#888'),
+      border: v('--border', '#e5e7eb'), accent: v('--primary', '#3b82f6'),
+      green: '#22c55e', amber: '#f59e0b', red: '#ef4444', grey: '#9ca3af',
+      card: v('--card', '#fff')
+    };
+  }
+  // ---- API：统一处理 {success, data, error} 信封；HTTP 200 也可能 success:false ----
+  function apiGet(path) {
+    return fetch(apiUrl(path), { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+      .then(function (j) {
+        if (j && j.success === false) throw new Error(j.error || ('请求失败：' + path));
+        return j && ('data' in j) ? j.data : j;
+      });
+  }
+  var state = {
+    member: null,              // null=未知，true=已登录，false=游客
+    servers: [],               // WS 来的服务器
+    services: [],              // [{id, name, type, ...}]，来自 /api/v1/service
+    svcStats: {},              // serviceId -> {avgDelay, uptime, totalUp, totalDown}
+    histByServer: {},          // serverId -> {avgDelay, loss, lastDelay, up, down}
+    range: CFG.defaultRange,
+    peakCut: CFG.peakCut.enabled,
+    detailServerId: null,
+    detailProbeId: null,       // 选中的探针 service id（单选时显示丢包面积）
+    chart: null,
+    echartsOk: null,
+    ws: null, wsTimer: null, refreshTimer: null
+  };
+  function checkLogin() {
+    return fetch(apiUrl(CFG.profileApi), { credentials: 'same-origin' })
+      .then(function (r) { return r.json().then(function (j) { return r.ok && j && j.success === true; }); })
+      .then(function (ok) { state.member = !!ok; return state.member; })
+      .catch(function () { state.member = false; return false; });
+  }
+  function typeName(t) { return t === 1 ? 'HTTP' : t === 2 ? 'ICMP' : t === 3 ? 'TCP' : '探针'; }
+  function isOnline(srv, nowMs) {
+    if (!srv) return false;
+    if (srv.last_active) {
+      var t = new Date(srv.last_active).getTime();
+      if (!isNaN(t)) return (nowMs - t) <= CFG.wsStaleSec * 1000;
+    }
+    return !!srv.state; // 无 last_active 时，有 state 即视为在线（兜底，见 README）
+  }
+  function percentile(arr, p) {
+    if (!arr.length) return null;
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    return a[Math.min(a.length - 1, Math.floor((p / 100) * a.length))];
+  }
+
+  // ---- 数据加载 ----
+  function loadServices() {
+    return apiGet(CFG.serviceApi).then(function (data) {
+      var map = (data && data.services) || {};
+      state.services = Object.keys(map).map(function (k) {
+        var it = map[k] || {};
+        it._id = Number(k);
+        return it;
+      }).sort(function (a, b) { return (a.service_name || '').localeCompare(b.service_name || ''); });
+      state.services.forEach(function (s) {
+        var up = s.total_up || 0, down = s.total_down || 0, tot = up + down;
+        var delays = (s.delay || []).filter(function (v) { return typeof v === 'number' && !isNaN(v); });
+        state.svcStats[s._id] = {
+          avgDelay: delays.length ? delays.reduce(function (a, b) { return a + b; }, 0) / delays.length : null,
+          uptime: tot ? (up / tot) * 100 : null, totalUp: up, totalDown: down
+        };
+      });
+      renderServices();
+      return state.services;
+    });
+  }
+  // 用各服务的 1d 历史汇总出每台服务器的延迟/丢包（只发 S 次请求，S=服务数）
+  function loadServerLatency() {
+    var nowMs = Date.now();
+    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs}
+    var jobs = state.services.map(function (s) {
+      return apiGet('/api/v1/service/' + s._id + '/history?period=1d').then(function (data) {
+        (data.servers || []).forEach(function (sv) {
+          var st = sv.stats || {};
+          var a = agg[sv.server_id] || (agg[sv.server_id] = { delays: [], up: 0, down: 0, lastDelay: null, lastTs: 0 });
+          if (typeof st.avg_delay === 'number') a.delays.push(st.avg_delay);
+          a.up += st.total_up || 0; a.down += st.total_down || 0;
+          (st.data_points || []).forEach(function (p) {
+            if (p && typeof p.delay === 'number' && p.ts > a.lastTs) { a.lastTs = p.ts; a.lastDelay = p.delay; }
+          });
+        });
+      }).catch(function () { /* 单个服务历史失败不阻塞整体，见 README */ });
+    });
+    return Promise.all(jobs).then(function () {
+      var out = {};
+      Object.keys(agg).forEach(function (sid) {
+        var a = agg[sid], tot = a.up + a.down;
+        out[sid] = {
+          avgDelay: a.delays.length ? a.delays.reduce(function (x, y) { return x + y; }, 0) / a.delays.length : null,
+          loss: tot ? (a.down / tot) * 100 : null,
+          lastDelay: a.lastDelay, up: a.up, down: a.down
+        };
+      });
+      state.histByServer = out;
+      renderServers();
+      return out;
+    });
+  }
+  function connectWS() {
+    try { if (state.ws) state.ws.close(); } catch (e) {}
+    var ws;
+    try { ws = new WebSocket(wsUrl(CFG.wsServerUrl)); } catch (e) { onWsFail(); return; }
+    state.ws = ws;
+    ws.onmessage = function (ev) {
+      try {
+        var d = JSON.parse(ev.data);
+        if (d && d.servers) { state.servers = d.servers; renderServers(); updateFab(); }
+      } catch (e) {}
+    };
+    ws.onclose = function () { state.wsTimer = setTimeout(connectWS, 5000); };
+    ws.onerror = function () { /* onclose 会重连 */ };
+    setTimeout(function () {
+      if (!state.servers.length) onWsFail();
+    }, 8000);
+  }
+  function onWsFail() {
+    if (!state.servers.length && state.member === true) {
+      // 已登录兜底：GET /api/v1/server（游客不可用）
+      apiGet('/api/v1/server').then(function (list) {
+        state.servers = (list || []).map(function (s) {
+          return { id: s.id, name: s.name, country_code: s.country_code, display_index: s.display_index, last_active: s.last_active, state: s.state || null };
+        });
+        renderServers();
+      }).catch(function () {
+        showNotice('服务器列表加载失败：WebSocket 未连通，且登录接口也不可用。请检查面板地址 / 反代配置。', true);
+      });
+    } else if (!state.servers.length) {
+      showNotice('服务器列表加载失败：WebSocket 未连通。请检查面板地址 / 反代是否放行 WebSocket。', true);
+    }
+  }
+  function loadAll() {
+    showNotice('');
+    return checkLogin().then(function () {
+      return loadServices();
+    }).then(function () {
+      connectWS();
+      return loadServerLatency();
+    }).catch(function (err) {
+      showNotice('加载失败：' + (err && err.message ? err.message : err), true);
+    });
+  }
+  // ---- 渲染：总览 ----
+  function renderServices() {
+    var wrap = $('nl-services');
+    if (!state.services.length) { wrap.innerHTML = '<div class="nl-empty">暂无服务探针。请在 Nezha 后台 /dashboard/service 新建 HTTP / ICMP / TCP 监控服务。</div>'; return; }
+    var worstLoss = null, worstLat = null, sumLat = 0, nLat = 0;
+    state.services.forEach(function (s) {
+      var st = state.svcStats[s._id] || {};
+      if (st.avgDelay != null) { sumLat += st.avgDelay; nLat++; if (worstLat == null || st.avgDelay > worstLat) worstLat = st.avgDelay; }
+      if (st.uptime != null) { var l = 100 - st.uptime; if (worstLoss == null || l > worstLoss) worstLoss = l; }
+    });
+    $('nl-stats').innerHTML =
+      '<div class="nl-stat"><div class="nl-k">服务探针</div><div class="nl-v">' + state.services.length + ' <small>个</small></div></div>' +
+      '<div class="nl-stat"><div class="nl-k">服务器</div><div class="nl-v">' + state.servers.length + ' <small>台</small></div></div>' +
+      '<div class="nl-stat"><div class="nl-k">平均延迟（30 天均值）</div><div class="nl-v">' + fmtMs(nLat ? sumLat / nLat : null) + '</div></div>' +
+      '<div class="nl-stat"><div class="nl-k">最高延迟（30 天均值）</div><div class="nl-v">' + fmtMs(worstLat) + '</div></div>' +
+      '<div class="nl-stat"><div class="nl-k">最高丢包（30 天）</div><div class="nl-v">' + fmtPct(worstLoss) + '</div></div>';
+    wrap.innerHTML = state.services.map(function (s) {
+      var st = state.svcStats[s._id] || {};
+      var delays = s.delay || [], ups = s.up || [], downs = s.down || [];
+      var barsLat = '', barsLoss = '';
+      for (var i = 0; i < 30; i++) {
+        var d = delays[i], u = ups[i], dn = downs[i], tot = (u || 0) + (dn || 0);
+        barsLat += '<i class="' + latencyClass(typeof d === 'number' ? d : null) + '" title="第 ' + (i + 1) + ' 天：延迟 ' + fmtMs(typeof d === 'number' ? d : null) + '"></i>';
+        var upPct = tot ? (u / tot) * 100 : null;
+        barsLoss += '<i class="' + uptimeClass(upPct) + '" title="第 ' + (i + 1) + ' 天：正常率 ' + fmtPct(upPct) + '"></i>';
+      }
+      var uptime = st.uptime;
+      return '<div class="nl-svc" data-svc="' + s._id + '">' +
+        '<div class="nl-svc-top"><span class="nl-name">' + esc(s.service_name || ('服务 ' + s._id)) + '</span>' +
+        '<span class="nl-type">' + typeName(s.type) + '</span>' +
+        '<span class="nl-up nl-pill ' + uptimeClass(uptime) + '">' + (uptime == null ? '--' : uptime.toFixed(1) + '% 正常') + '</span></div>' +
+        '<div class="nl-svc-metrics"><span>平均延迟 <b>' + fmtMs(st.avgDelay) + '</b></span>' +
+        '<span>丢包 <b>' + fmtPct(uptime == null ? null : 100 - uptime) + '</b></span>' +
+        '<span>成功 ' + (st.totalUp || 0) + ' / 失败 ' + (st.totalDown || 0) + '</span></div>' +
+        '<div class="nl-bars">' + barsLat + '</div><div class="nl-bars-label"><span>延迟 · 30 天</span><span>绿 &lt;100ms · 黄 &lt;300ms · 红 ≥300ms</span></div>' +
+        '<div class="nl-bars">' + barsLoss + '</div><div class="nl-bars-label"><span>正常率 · 30 天</span><span>绿 ≥99% · 黄 ≥95% · 红 &lt;95%</span></div>' +
+        '</div>';
+    }).join('');
+    wrap.querySelectorAll('.nl-svc').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var id = Number(el.getAttribute('data-svc'));
+        var svc = state.services.filter(function (x) { return x._id === id; })[0];
+        if (svc) { state.detailProbeId = id; openDetail(null, id); }
+      });
+    });
+  }
+  // ---- 渲染：服务器表 ----
+  function renderServers() {
+    var tb = $('nl-servers');
+    var nowMs = Date.now();
+    var list = state.servers.slice().sort(function (a, b) { return (b.display_index || 0) - (a.display_index || 0); });
+    if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="nl-empty">暂无服务器数据（WebSocket 未收到数据）。</td></tr>'; return; }
+    tb.innerHTML = list.map(function (srv) {
+      var online = isOnline(srv, nowMs);
+      var h = state.histByServer[srv.id] || {};
+      var cur = online ? h.lastDelay : null;
+      var loss = online ? h.loss : null;
+      // 离线：延迟/丢包显示 --；探针不可达但 agent 仍上报时 loss 为 100.0%
+      return '<tr data-sid="' + srv.id + '" class="' + (state.detailServerId === srv.id ? 'sel' : '') + '">' +
+        '<td>' + esc(srv.name || ('#' + srv.id)) + (srv.country_code ? ' <span style="color:var(--nl-muted)">(' + esc(srv.country_code) + ')</span>' : '') + '</td>' +
+        '<td><span class="nl-pill ' + (online ? 'g' : 'r') + '">' + (online ? '在线' : '离线') + '</span></td>' +
+        '<td class="nl-num"><span class="nl-pill ' + latencyClass(cur) + '">' + fmtMs(cur) + '</span></td>' +
+        '<td class="nl-num">' + fmtMs(h.avgDelay) + '</td>' +
+        '<td class="nl-num"><span class="nl-pill ' + lossClass(loss) + '">' + fmtPct(loss) + '</span></td>' +
+        '<td style="color:var(--nl-muted)">' + state.services.length + ' 个探针 ›</td></tr>';
+    }).join('');
+    tb.querySelectorAll('tr[data-sid]').forEach(function (tr) {
+      tr.addEventListener('click', function () { openDetail(Number(tr.getAttribute('data-sid')), null); });
+    });
+    updateFab();
+  }
+  function updateFab() {
+    var el = $('nl-fab-summary'), dot = $('nl-fab-dot');
+    if (!state.servers.length) { el.textContent = ''; return; }
+    var nowMs = Date.now(), worst = null, off = 0;
+    state.servers.forEach(function (srv) {
+      if (!isOnline(srv, nowMs)) { off++; return; }
+      var h = state.histByServer[srv.id] || {};
+      if (h.lastDelay != null && (worst == null || h.lastDelay > worst)) worst = h.lastDelay;
+    });
+    el.textContent = off ? ('离线 ' + off + ' 台') : ('最慢 ' + fmtMs(worst));
+    dot.className = 'nl-dot' + (off ? ' bad' : '');
+  }
+
+  // ---- 详情（Network 视图） ----
+  function openDetail(serverId, probeId) {
+    if (serverId != null) state.detailServerId = serverId;
+    if (probeId != null) state.detailProbeId = probeId;
+    var srv = state.servers.filter(function (x) { return x.id === state.detailServerId; })[0];
+    if (!srv && probeId == null) return;
+    $('nl-detail').style.display = 'block';
+    $('nl-detail-title').textContent = srv ? ('详情 · ' + srv.name) : '服务详情';
+    $('nl-detail-hint').textContent = '';
+    loadDetail();
+    var modal = $('nl-modal-overlay');
+    if (modal) modal.scrollTop = modal.scrollHeight;
+  }
+  function loadDetail() {
+    var sid = state.detailServerId, range = state.range;
+    if (sid == null) return;
+    showNotice('');
+    if (state.member === false && range !== '1d') {
+      showNotice('游客仅可查看 24h 数据，7d / 30d 需要登录。已自动切回 24h。');
+      state.range = '1d'; range = '1d'; renderRanges();
+    }
+    apiGet('/api/v1/server/' + sid + '/service?period=' + range).then(function (infos) {
+      var list = infos || [];
+      if (!list.length) {
+        $('nl-probes').innerHTML = '<div class="nl-empty">该服务器暂无探针数据（可能未配置监控服务，或该服务设置了 HideForGuest）。</div>';
+        $('nl-chart').innerHTML = ''; $('nl-chart-fallback').innerHTML = '';
+        return;
+      }
+      if (state.detailProbeId == null || !list.some(function (m) { return m.monitor_id === state.detailProbeId; })) {
+        state.detailProbeId = list[0].monitor_id;
+      }
+      renderProbes(list, range);
+      return renderChart(list, range);
+    }).catch(function (err) {
+      var msg = err && err.message ? err.message : String(err);
+      if (/only 1d data/i.test(msg)) {
+        showNotice('游客仅可查看 24h 数据，7d / 30d 需要登录。已自动切回 24h。');
+        state.range = '1d'; renderRanges(); loadDetail();
+      } else {
+        showNotice('详情加载失败：' + msg, true);
+      }
+    });
+  }
+  function renderProbes(monitors, range) {
+    var sid = state.detailServerId;
+    // 每探针的平均丢包来自 /service/:id/history 的 stats（按该服务器汇总）
+    var jobs = monitors.map(function (m) {
+      return apiGet('/api/v1/service/' + m.monitor_id + '/history?period=' + range).then(function (data) {
+        var sv = (data.servers || []).filter(function (x) { return x.server_id === sid; })[0];
+        return { monitor_id: m.monitor_id, stats: sv ? sv.stats : null, points: sv ? sv.stats.data_points : [] };
+      }).catch(function () { return { monitor_id: m.monitor_id, stats: null, points: [] }; });
+    });
+    Promise.all(jobs).then(function (hist) {
+      var byId = {};
+      hist.forEach(function (h) { byId[h.monitor_id] = h; });
+      $('nl-probes').innerHTML = monitors.map(function (m) {
+        var delays = (m.avg_delay || []).filter(function (v) { return typeof v === 'number' && !isNaN(v); });
+        var last = delays.length ? delays[delays.length - 1] : null;
+        var mn = delays.length ? Math.min.apply(null, delays) : null;
+        var mx = delays.length ? Math.max.apply(null, delays) : null;
+        var h = byId[m.monitor_id] || {};
+        var st = h.stats || {};
+        var loss = (st.total_up != null && (st.total_up + (st.total_down || 0)) > 0)
+          ? (st.total_down / (st.total_up + st.total_down)) * 100 : null;
+        var svc = state.services.filter(function (x) { return x._id === m.monitor_id; })[0];
+        return '<button class="nl-probe' + (state.detailProbeId === m.monitor_id ? ' sel' : '') + '" type="button" data-mid="' + m.monitor_id + '">' +
+          '<div class="nl-pname">' + esc(m.monitor_name || (svc ? svc.service_name : ('探针 ' + m.monitor_id))) + '</div>' +
+          '<div class="nl-pmeta">最近延迟 <b>' + fmtMs(last) + '</b> · 最低 ' + fmtMs(mn) + ' / 最高 ' + fmtMs(mx) + '<br>' +
+          '平均延迟 ' + fmtMs(st.avg_delay) + ' · 平均丢包 <b>' + fmtPct(loss) + '</b></div></button>';
+      }).join('');
+      $('nl-probes').querySelectorAll('.nl-probe').forEach(function (el) {
+        el.addEventListener('click', function () {
+          state.detailProbeId = Number(el.getAttribute('data-mid'));
+          renderProbes(monitors, range);
+          renderChart(monitors, range);
+        });
+      });
+      $('nl-detail-hint').textContent = '提示：点探针只看它的丢包面积；图例点击可开关延迟曲线。丢包按桶统计（桶内失败记 100%，成功记 0%），平均丢包 = 失败桶占比。';
+    });
+  }
+  function downsample(points, maxN) {
+    if (points.length <= maxN) return points;
+    var step = Math.ceil(points.length / maxN), out = [];
+    for (var i = 0; i < points.length; i += step) out.push(points[i]);
+    return out;
+  }
+  function renderChart(monitors, range) {
+    var sid = state.detailServerId;
+    var jobs = monitors.map(function (m) {
+      return apiGet('/api/v1/service/' + m.monitor_id + '/history?period=' + range).then(function (data) {
+        var sv = (data.servers || []).filter(function (x) { return x.server_id === sid; })[0];
+        return { monitor_id: m.monitor_id, points: sv && sv.stats ? sv.stats.data_points || [] : [] };
+      }).catch(function () { return { monitor_id: m.monitor_id, points: [] }; });
+    });
+    return Promise.all(jobs).then(function (hist) {
+      var byId = {};
+      hist.forEach(function (h) { byId[h.monitor_id] = h.points; });
+      var colors = themeColors();
+      // Peak cut：按当前范围全部延迟值的 P95 截断
+      var allDelays = [];
+      monitors.forEach(function (m) {
+        (m.avg_delay || []).forEach(function (v) { if (typeof v === 'number') allDelays.push(v); });
+      });
+      var cap = state.peakCut ? percentile(allDelays, CFG.peakCut.percentile) : null;
+      var palette = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6'];
+      var latencySeries = monitors.map(function (m, idx) {
+        var pts = [];
+        (m.created_at || []).forEach(function (ts, i) {
+          var v = m.avg_delay ? m.avg_delay[i] : null;
+          if (typeof v !== 'number') return;
+          if (cap != null && v > cap) v = cap;
+          pts.push([ts, Math.round(v * 10) / 10]);
+        });
+        return {
+          name: (m.monitor_name || ('探针 ' + m.monitor_id)) + ' 延迟',
+          type: 'line', yAxisIndex: 0, showSymbol: false, sampling: 'lttb',
+          lineStyle: { width: 1.8 }, itemStyle: { color: palette[idx % palette.length] },
+          data: downsample(pts, CFG.maxDetailPoints)
+        };
+      });
+      // 丢包面积：只画选中探针（与官方前端一致：单选显示丢包面积，多选只显示延迟线）
+      var lossSeries = [];
+      var selPts = byId[state.detailProbeId] || [];
+      if (selPts.length) {
+        lossSeries.push({
+          name: '丢包率', type: 'line', yAxisIndex: 1, showSymbol: false, step: 'end',
+          areaStyle: { opacity: 0.18 }, lineStyle: { width: 1.5, color: colors.red },
+          itemStyle: { color: colors.red },
+          data: downsample(selPts.map(function (p) { return [p.ts, p.status === 1 ? 0 : 100]; }), CFG.maxDetailPoints)
+        });
+      }
+      var selName = (monitors.filter(function (m) { return m.monitor_id === state.detailProbeId; })[0] || {}).monitor_name || '';
+      var note = cap != null ? ' · Peak cut 已开启（延迟按 P95 ≈ ' + fmtMs(cap) + ' 截断）' : '';
+      window.__nlLoadECharts(function (ok) {
+        var box = $('nl-chart'), fb = $('nl-chart-fallback');
+        if (!ok || !window.echarts) {
+          box.innerHTML = '<div class="nl-empty">图表库（ECharts）加载失败，已降级为数据表。请检查 jsdelivr / unpkg 是否可达。</div>';
+          fb.innerHTML = fallbackTable(monitors, byId);
+          return;
+        }
+        fb.innerHTML = '';
+        if (state.chart) { try { state.chart.dispose(); } catch (e) {} }
+        var chart = echarts.init(box, null, { renderer: 'canvas' });
+        state.chart = chart;
+        chart.setOption({
+          animation: false,
+          grid: { left: 56, right: 56, top: 34, bottom: 30 },
+          tooltip: {
+            trigger: 'axis',
+            valueFormatter: function (v) { return v == null ? '--' : v; },
+            axisPointer: { type: 'cross' }
+          },
+          legend: { top: 0, textStyle: { color: colors.fg, fontSize: 11 }, selectedMode: true },
+          xAxis: { type: 'time', axisLabel: { color: colors.muted, fontSize: 11 }, splitLine: { show: false } },
+          yAxis: [
+            { type: 'value', name: '延迟 ms', min: 0, axisLabel: { color: colors.muted, fontSize: 11 }, splitLine: { lineStyle: { color: colors.border } } },
+            { type: 'value', name: '丢包 %', min: 0, max: 100, axisLabel: { color: colors.muted, fontSize: 11, formatter: '{value}%' }, splitLine: { show: false } }
+          ],
+          series: latencySeries.concat(lossSeries)
+        });
+        chart.setOption({ title: { text: (selName ? selName + ' · ' : '') + rangeLabel(range) + note, left: 'center', top: 0, textStyle: { color: colors.muted, fontSize: 11, fontWeight: 'normal' } } });
+        chart.resize();
+      });
+    });
+  }
+  function rangeLabel(v) { var r = CFG.ranges.filter(function (x) { return x.value === v; })[0]; return r ? r.label : v; }
+  function fallbackTable(monitors, byId) {
+    // ECharts 不可用时的降级：按天/小时聚合的平均延迟与丢包
+    var rows = monitors.map(function (m) {
+      var delays = (m.avg_delay || []).filter(function (v) { return typeof v === 'number'; });
+      var avg = delays.length ? delays.reduce(function (a, b) { return a + b; }, 0) / delays.length : null;
+      var pts = byId[m.monitor_id] || [];
+      var fail = pts.filter(function (p) { return p.status === 0; }).length;
+      var loss = pts.length ? (fail / pts.length) * 100 : null;
+      return '<tr><td>' + esc(m.monitor_name || ('探针 ' + m.monitor_id)) + '</td><td>' + fmtMs(avg) + '</td><td>' + fmtPct(loss) + '</td><td>' + pts.length + '</td></tr>';
+    }).join('');
+    return '<table class="nl-chart-fallback"><thead><tr><th>探针</th><th>平均延迟</th><th>平均丢包</th><th>数据点</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  }
+  // ---- 范围 / Peak cut / 面板开关 ----
+  function renderRanges() {
+    var w = $('nl-range-wrap');
+    w.innerHTML = CFG.ranges.map(function (r) {
+      var dis = (state.member === false && r.value !== '1d') ? ' disabled title="游客仅可查看 24h，7d/30d 需要登录"' : '';
+      return '<button class="nl-btn' + (state.range === r.value ? ' active' : '') + '" type="button" data-range="' + r.value + '"' + dis + '>' + r.label + '</button>';
+    }).join('');
+    w.querySelectorAll('[data-range]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        state.range = b.getAttribute('data-range');
+        renderRanges();
+        if (state.detailServerId != null) loadDetail(); else loadAll();
+      });
+    });
+    var pb = $('nl-peak-btn');
+    pb.textContent = 'Peak cut：' + (state.peakCut ? '开' : '关');
+  }
+  function openModal() {
+    $('nl-modal-overlay').classList.add('show');
+    renderRanges();
+    loadAll();
+    if (state.chart) state.chart.resize();
+  }
+  function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
+  // ---- 卡片角标（尽力而为） ----
+  function attachCardChips() {
+    if (!CFG.attachCards || !state.servers.length) return;
+    try {
+      document.querySelectorAll('a[href^="/server/"]').forEach(function (a) {
+        if (a.querySelector('.nl-chip')) return;
+        var m = a.getAttribute('href').match(/\/server\/(\d+)/);
+        if (!m) return;
+        var h = state.histByServer[Number(m[1])];
+        if (!h || h.lastDelay == null) return;
+        var s = document.createElement('span');
+        s.className = 'nl-chip';
+        s.innerHTML = '<span class="nl-pill ' + latencyClass(h.lastDelay) + '">' + fmtMs(h.lastDelay) + '</span>' +
+          '<span class="nl-pill ' + lossClass(h.loss) + '">丢包 ' + fmtPct(h.loss) + '</span>';
+        a.appendChild(s);
+      });
+    } catch (e) {}
+  }
+  // ---- 初始化 ----
+  function init() {
+    if (!CFG.showFab) { var f = $('nl-fab'); if (f) f.style.display = 'none'; }
+    $('nl-fab').addEventListener('click', openModal);
+    $('nl-close-btn').addEventListener('click', closeModal);
+    $('nl-modal-overlay').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
+    $('nl-refresh-btn').addEventListener('click', function () { loadAll(); if (state.detailServerId != null) loadDetail(); });
+    $('nl-peak-btn').addEventListener('click', function () {
+      state.peakCut = !state.peakCut; renderRanges();
+      if (state.detailServerId != null) loadDetail();
+    });
+    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+    window.addEventListener('resize', function () { if (state.chart) state.chart.resize(); });
+    // 主题变化时重绘图表颜色
+    var mo = new MutationObserver(function () { if (state.chart && $('nl-modal-overlay').classList.contains('show') && state.detailServerId != null) loadDetail(); });
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    if (CFG.refreshSec > 0) {
+      state.refreshTimer = setInterval(function () {
+        if (document.hidden) return;
+        if ($('nl-modal-overlay').classList.contains('show')) { loadAll(); if (state.detailServerId != null) loadDetail(); }
+      }, CFG.refreshSec * 1000);
+    }
+    // 卡片角标：页面渲染后尽力挂上
+    setInterval(attachCardChips, 5000);
+    window.NezhaLatency = { open: openModal, close: closeModal, refresh: loadAll, config: CFG, state: state };
+    renderRanges();
+    checkLogin().then(function () { renderRanges(); });
+  }
+  function boot() {
+    if (document.getElementById('root')) { init(); return; }
+    var ob = new MutationObserver(function () {
+      if (document.getElementById('root')) { ob.disconnect(); init(); }
+    });
+    ob.observe(document.documentElement, { childList: true, subtree: true });
+    setTimeout(function () { if (!window.NezhaLatency) { ob.disconnect(); init(); } }, 8000);
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
+  else boot();
+})();
+</script>
