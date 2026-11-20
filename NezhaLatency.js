@@ -7,10 +7,10 @@
 (function () {
   'use strict';
   // Avoid double injection when custom_code is re-applied in the same page.
-  if (document.getElementById('nl-fab')) return;
+  if (document.getElementById('nl-modal-overlay')) return;
   var VERSION = 'NezhaLatency-v2';
-  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* ================= 2. 悬浮按钮 ================= */\n#nl-fab {\n  position: fixed; right: 20px; bottom: 20px; z-index: 1040;\n  display: flex; align-items: center; gap: 6px;\n  padding: 10px 16px; border-radius: 999px; cursor: pointer;\n  background-color: var(--nl-card); color: var(--nl-fg);\n  border: 1px solid var(--nl-border);\n  box-shadow: 0 4px 16px var(--nl-shadow);\n  font-size: 0.9rem; font-weight: 600;\n  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);\n  transition: transform 0.2s ease, box-shadow 0.2s ease;\n}\n#nl-fab:hover { transform: translateY(-2px); box-shadow: 0 8px 24px var(--nl-shadow); }\n#nl-fab .nl-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--nl-green); }\n#nl-fab .nl-dot.bad { background: var(--nl-red); }\n/* ================= 3. 面板 ================= */\n#nl-modal-overlay {\n  position: fixed; inset: 0; z-index: 2000;\n  background: rgba(0, 0, 0, 0.45);\n  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);\n  display: none; align-items: flex-start; justify-content: center;\n  overflow-y: auto; padding: 24px 12px;\n}\n#nl-modal-overlay.show { display: flex; }\n#nl-modal {\n  width: min(1060px, 96vw);\n  background: var(--nl-card); color: var(--nl-fg);\n  border: 1px solid var(--nl-border); border-radius: 16px;\n  box-shadow: 0 16px 48px var(--nl-shadow);\n  overflow: hidden;\n}\n.nl-modal-head {\n  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;\n  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);\n}\n.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }\n.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }\n.nl-modal-head .nl-spacer { flex: 1; }\n.nl-btn {\n  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);\n  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;\n}\n.nl-btn:hover { border-color: var(--nl-accent); }\n.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }\n.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }\n.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }\n.nl-body { padding: 16px 18px 20px; }\n.nl-notice {\n  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;\n  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);\n  color: var(--nl-fg); font-size: 0.83rem;\n}\n.nl-notice.show { display: block; }\n.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }\n.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }\n.nl-stat {\n  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;\n  padding: 10px 14px; background: var(--nl-bg);\n}\n.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }\n.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }\n.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }\n.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }\n.nl-section-title:first-child { margin-top: 0; }\n/* 服务卡片 */\n.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }\n.nl-svc {\n  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;\n  background: var(--nl-bg); cursor: pointer;\n}\n.nl-svc:hover { border-color: var(--nl-accent); }\n.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-svc-top { display: flex; align-items: center; gap: 8px; }\n.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }\n.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }\n.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }\n.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排 */\n.nl-card-strip { margin-top: 8px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 1rem; font-variant-numeric: tabular-nums; }\n.nl-card-strip-bars { display: flex; gap: 12px; margin-top: 6px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; }\n/* 服务器表 */\n.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }\n.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }\n.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }\n.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }\n.nl-table tr:last-child td { border-bottom: none; }\n.nl-table tbody tr { cursor: pointer; }\n.nl-table tbody tr:hover { background: var(--nl-bg); }\n.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }\n.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }\n.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }\n.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }\n.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }\n.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }\n.nl-num { font-variant-numeric: tabular-nums; }\n/* 探针按钮与图表 */\n.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }\n.nl-probe {\n  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;\n  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;\n}\n.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }\n.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }\n#nl-chart { width: 100%; height: 360px; margin-top: 8px; }\n.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }\n.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }\n.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }\n.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }\n.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }\n/* 卡片角标（尽力而为的 DOM 增强，见 README） */\n.nl-chip {\n  display: inline-flex; gap: 4px; align-items: center;\n  font-size: 0.72rem; font-weight: 600; margin-left: 6px; white-space: nowrap;\n}\n@media (max-width: 640px) {\n  #nl-fab { right: 12px; bottom: 12px; padding: 9px 13px; }\n  #nl-chart { height: 300px; }\n  .nl-probe { min-width: 140px; flex: 1 1 40%; }\n}";
-  var HTML = "<!-- 悬浮按钮 -->\n<button id=\"nl-fab\" type=\"button\" title=\"查看延迟 / 丢包\">\n  <span class=\"nl-dot\" id=\"nl-fab-dot\"></span><span>延迟</span><span id=\"nl-fab-summary\" style=\"font-weight:400;opacity:.75\"></span>\n</button>\n<!-- 面板 -->\n<div id=\"nl-modal-overlay\">\n  <div id=\"nl-modal\" role=\"dialog\" aria-label=\"延迟 / 丢包\">\n    <div class=\"nl-modal-head\">\n      <h2>延迟 / 丢包</h2><span class=\"nl-sub\" id=\"nl-modal-sub\">Nezha v2 · 探针监控</span>\n      <span class=\"nl-spacer\"></span>\n      <span id=\"nl-range-wrap\" style=\"display:flex;gap:6px\"></span>\n      <button class=\"nl-btn\" id=\"nl-peak-btn\" type=\"button\" title=\"把延迟高于 P95 的尖峰截断到 P95，让曲线更易读\">Peak cut：开</button>\n      <button class=\"nl-btn\" id=\"nl-refresh-btn\" type=\"button\">刷新</button>\n      <button class=\"nl-btn nl-close\" id=\"nl-close-btn\" type=\"button\" aria-label=\"关闭\">×</button>\n    </div>\n    <div class=\"nl-body\">\n      <div class=\"nl-notice\" id=\"nl-notice\"></div>\n      <div class=\"nl-stats\" id=\"nl-stats\"></div>\n      <div class=\"nl-section-title\">服务总览 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（来自 GET /api/v1/service，30 天日粒度）</span></div>\n      <div class=\"nl-svc-grid\" id=\"nl-services\"><div class=\"nl-empty\">正在加载服务数据…</div></div>\n      <div class=\"nl-section-title\">服务器 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率）</span></div>\n      <div class=\"nl-table-wrap\"><table class=\"nl-table\">\n        <thead><tr><th>服务器</th><th>状态</th><th>当前延迟</th><th>平均延迟 24h</th><th>丢包 24h</th><th>探针</th></tr></thead>\n        <tbody id=\"nl-servers\"><tr><td colspan=\"6\" class=\"nl-empty\">正在加载服务器数据…</td></tr></tbody>\n      </table></div>\n      <div id=\"nl-detail\" style=\"display:none\">\n        <div class=\"nl-section-title\" id=\"nl-detail-title\">详情</div>\n        <div class=\"nl-probes\" id=\"nl-probes\"></div>\n        <div id=\"nl-chart\"></div>\n        <div id=\"nl-chart-fallback\"></div>\n        <div class=\"nl-hint\" id=\"nl-detail-hint\"></div>\n      </div>\n      <div class=\"nl-hint\">\n        数据来源：Nezha v2 服务探针（HTTP / ICMP / TCP）。延迟为探针实测往返毫秒数；\n        丢包率由探针成功/失败计数推导，Nezha v2 不直接存储丢包字段。\n        时间范围：1h（实时，最近 60 分钟，每 30 秒刷新）/ 24h / 7d / 30d——\n        1h 是虚拟档，接口仍请求 period=1d 再在前端截取最近 1 小时，因为 v2 API\n        的 period 只接受 1d / 7d / 30d，1h 会直接报错。游客可查看 1h 和 24h，\n        7d / 30d 需要登录。\n      </div>\n    </div>\n  </div>\n</div>";
+  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* 悬浮按钮已移除（2026-11-21）：延迟改在服务器卡片底部展示，点卡片条开详情。 */\n/* ================= 2. 面板 ================= */\n#nl-modal-overlay {\n  position: fixed; inset: 0; z-index: 2000;\n  background: rgba(0, 0, 0, 0.45);\n  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);\n  display: none; align-items: flex-start; justify-content: center;\n  overflow-y: auto; padding: 24px 12px;\n}\n#nl-modal-overlay.show { display: flex; }\n#nl-modal {\n  width: min(1060px, 96vw);\n  background: var(--nl-card); color: var(--nl-fg);\n  border: 1px solid var(--nl-border); border-radius: 16px;\n  box-shadow: 0 16px 48px var(--nl-shadow);\n  overflow: hidden;\n}\n.nl-modal-head {\n  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;\n  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);\n}\n.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }\n.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }\n.nl-modal-head .nl-spacer { flex: 1; }\n.nl-btn {\n  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);\n  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;\n}\n.nl-btn:hover { border-color: var(--nl-accent); }\n.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }\n.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }\n.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }\n.nl-body { padding: 16px 18px 20px; }\n.nl-notice {\n  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;\n  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);\n  color: var(--nl-fg); font-size: 0.83rem;\n}\n.nl-notice.show { display: block; }\n.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }\n.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }\n.nl-stat {\n  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;\n  padding: 10px 14px; background: var(--nl-bg);\n}\n.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }\n.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }\n.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }\n.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }\n.nl-section-title:first-child { margin-top: 0; }\n/* 服务卡片 */\n.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }\n.nl-svc {\n  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;\n  background: var(--nl-bg); cursor: pointer;\n}\n.nl-svc:hover { border-color: var(--nl-accent); }\n.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-svc-top { display: flex; align-items: center; gap: 8px; }\n.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }\n.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }\n.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }\n.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排 */\n.nl-card-strip { margin-top: 8px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.9rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 1rem; font-variant-numeric: tabular-nums; }\n.nl-card-strip-bars { display: flex; gap: 12px; margin-top: 6px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; }\n/* 服务器表 */\n.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }\n.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }\n.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }\n.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }\n.nl-table tr:last-child td { border-bottom: none; }\n.nl-table tbody tr { cursor: pointer; }\n.nl-table tbody tr:hover { background: var(--nl-bg); }\n.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }\n.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }\n.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }\n.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }\n.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }\n.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }\n.nl-num { font-variant-numeric: tabular-nums; }\n/* 探针按钮与图表 */\n.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }\n.nl-probe {\n  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;\n  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;\n}\n.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }\n.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }\n#nl-chart { width: 100%; height: 360px; margin-top: 8px; }\n.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }\n.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }\n.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }\n.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }\n.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }\n/* 首页卡片延迟条：复用 .nl-card-strip（面板服务卡片同款），只让条本身可点 */\n.nl-home-strip { cursor: pointer; border-top: 1px solid var(--nl-border); padding-top: 8px; }\n.nl-home-strip:hover { outline: 1px solid var(--nl-accent); outline-offset: 2px; border-radius: 8px; }\n@media (max-width: 640px) {\n  #nl-chart { height: 300px; }\n  .nl-probe { min-width: 140px; flex: 1 1 40%; }\n}";
+  var HTML = "<!-- 悬浮按钮已移除（2026-11-21）：延迟改在服务器卡片底部展示，点卡片条开详情 -->\n<!-- 面板 -->\n<div id=\"nl-modal-overlay\">\n  <div id=\"nl-modal\" role=\"dialog\" aria-label=\"延迟 / 丢包\">\n    <div class=\"nl-modal-head\">\n      <h2>延迟 / 丢包</h2><span class=\"nl-sub\" id=\"nl-modal-sub\">Nezha v2 · 探针监控</span>\n      <span class=\"nl-spacer\"></span>\n      <span id=\"nl-range-wrap\" style=\"display:flex;gap:6px\"></span>\n      <button class=\"nl-btn\" id=\"nl-peak-btn\" type=\"button\" title=\"把延迟高于 P95 的尖峰截断到 P95，让曲线更易读\">Peak cut：开</button>\n      <button class=\"nl-btn\" id=\"nl-refresh-btn\" type=\"button\">刷新</button>\n      <button class=\"nl-btn nl-close\" id=\"nl-close-btn\" type=\"button\" aria-label=\"关闭\">×</button>\n    </div>\n    <div class=\"nl-body\">\n      <div class=\"nl-notice\" id=\"nl-notice\"></div>\n      <div class=\"nl-stats\" id=\"nl-stats\"></div>\n      <div class=\"nl-section-title\">服务总览 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（来自 GET /api/v1/service，30 天日粒度）</span></div>\n      <div class=\"nl-svc-grid\" id=\"nl-services\"><div class=\"nl-empty\">正在加载服务数据…</div></div>\n      <div class=\"nl-section-title\">服务器 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率）</span></div>\n      <div class=\"nl-table-wrap\"><table class=\"nl-table\">\n        <thead><tr><th>服务器</th><th>状态</th><th>当前延迟</th><th>平均延迟 24h</th><th>丢包 24h</th><th>探针</th></tr></thead>\n        <tbody id=\"nl-servers\"><tr><td colspan=\"6\" class=\"nl-empty\">正在加载服务器数据…</td></tr></tbody>\n      </table></div>\n      <div id=\"nl-detail\" style=\"display:none\">\n        <div class=\"nl-section-title\" id=\"nl-detail-title\">详情</div>\n        <div class=\"nl-probes\" id=\"nl-probes\"></div>\n        <div id=\"nl-chart\"></div>\n        <div id=\"nl-chart-fallback\"></div>\n        <div class=\"nl-hint\" id=\"nl-detail-hint\"></div>\n      </div>\n      <div class=\"nl-hint\">\n        数据来源：Nezha v2 服务探针（HTTP / ICMP / TCP）。延迟为探针实测往返毫秒数；\n        丢包率由探针成功/失败计数推导，Nezha v2 不直接存储丢包字段。\n        时间范围：1h（实时，最近 60 分钟，每 30 秒刷新）/ 24h / 7d / 30d——\n        1h 是虚拟档，接口仍请求 period=1d 再在前端截取最近 1 小时，因为 v2 API\n        的 period 只接受 1d / 7d / 30d，1h 会直接报错。游客可查看 1h 和 24h，\n        7d / 30d 需要登录。\n      </div>\n    </div>\n  </div>\n</div>";
   function inject() {
     if (!document.getElementById('nezha-latency-style')) {
       var st = document.createElement('style');
@@ -67,8 +67,8 @@ var NezhaLatencyConfig = Object.assign({
     lossAmber: 5
   },
   peakCut: { enabled: true, percentile: 95 },  // 默认开启 Peak cut
-  showFab: true,               // 是否显示右下角“延迟”悬浮按钮
-  attachCards: true,           // 尽力而为：尝试给官方前端的服务器卡片加延迟角标（失败不影响面板）
+  // 悬浮按钮已移除（2026-11-21）；延迟改在服务器卡片底部展示，点卡片条开详情
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片底部加延迟条（当前延迟 + 丢包率 + 两条分段历史柱，点条开详情；失败不影响面板）
   wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
   maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
 }, (window.NezhaLatencyConfig || {}));
@@ -207,16 +207,29 @@ var NezhaLatencyConfig = Object.assign({
   // 用各服务的 1d 历史汇总出每台服务器的延迟/丢包（只发 S 次请求，S=服务数）
   function loadServerLatency() {
     var nowMs = Date.now();
-    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs}
+    var dayStart = nowMs - 86400000, bucketMs = 8640000; // 首页卡片条：最近 24 小时分 10 桶
+    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs, buckets:[10]{dSum,dN,up,down}}
     var jobs = state.services.map(function (s) {
       return apiGet('/api/v1/service/' + s._id + '/history?period=1d').then(function (data) {
         (data.servers || []).forEach(function (sv) {
           var st = sv.stats || {};
-          var a = agg[sv.server_id] || (agg[sv.server_id] = { delays: [], up: 0, down: 0, lastDelay: null, lastTs: 0 });
+          var a = agg[sv.server_id];
+          if (!a) {
+            a = agg[sv.server_id] = { delays: [], up: 0, down: 0, lastDelay: null, lastTs: 0, buckets: [] };
+            for (var bi = 0; bi < 10; bi++) a.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
+          }
           if (typeof st.avg_delay === 'number') a.delays.push(st.avg_delay);
           a.up += st.total_up || 0; a.down += st.total_down || 0;
           (st.data_points || []).forEach(function (p) {
-            if (p && typeof p.delay === 'number' && p.ts > a.lastTs) { a.lastTs = p.ts; a.lastDelay = p.delay; }
+            if (!p) return;
+            if (typeof p.delay === 'number' && p.ts > a.lastTs) { a.lastTs = p.ts; a.lastDelay = p.delay; }
+            var m = tsToMs(p.ts);
+            if (m == null) return;
+            var idx = Math.floor((m - dayStart) / bucketMs);
+            if (idx < 0 || idx > 9) return;
+            var bk = a.buckets[idx];
+            if (typeof p.delay === 'number') { bk.dSum += p.delay; bk.dN++; }
+            if (p.status === 1) bk.up++; else if (p.status === 0) bk.down++;
           });
         });
       }).catch(function () { /* 单个服务历史失败不阻塞整体，见 README */ });
@@ -228,7 +241,11 @@ var NezhaLatencyConfig = Object.assign({
         out[sid] = {
           avgDelay: a.delays.length ? a.delays.reduce(function (x, y) { return x + y; }, 0) / a.delays.length : null,
           loss: tot ? (a.down / tot) * 100 : null,
-          lastDelay: a.lastDelay, up: a.up, down: a.down
+          lastDelay: a.lastDelay, up: a.up, down: a.down,
+          buckets: a.buckets.map(function (bk) {
+            var btot = bk.up + bk.down;
+            return { delay: bk.dN ? bk.dSum / bk.dN : null, loss: btot ? (bk.down / btot) * 100 : null };
+          })
         };
       });
       state.histByServer = out;
@@ -244,7 +261,7 @@ var NezhaLatencyConfig = Object.assign({
     ws.onmessage = function (ev) {
       try {
         var d = JSON.parse(ev.data);
-        if (d && d.servers) { state.servers = d.servers; renderServers(); updateFab(); }
+        if (d && d.servers) { state.servers = d.servers; renderServers(); }
       } catch (e) {}
     };
     ws.onclose = function () { state.wsTimer = setTimeout(connectWS, 5000); };
@@ -357,19 +374,7 @@ var NezhaLatencyConfig = Object.assign({
     tb.querySelectorAll('tr[data-sid]').forEach(function (tr) {
       tr.addEventListener('click', function () { openDetail(Number(tr.getAttribute('data-sid')), null); });
     });
-    updateFab();
-  }
-  function updateFab() {
-    var el = $('nl-fab-summary'), dot = $('nl-fab-dot');
-    if (!state.servers.length) { el.textContent = ''; return; }
-    var nowMs = Date.now(), worst = null, off = 0;
-    state.servers.forEach(function (srv) {
-      if (!isOnline(srv, nowMs)) { off++; return; }
-      var h = state.histByServer[srv.id] || {};
-      if (h.lastDelay != null && (worst == null || h.lastDelay > worst)) worst = h.lastDelay;
-    });
-    el.textContent = off ? ('离线 ' + off + ' 台') : ('最慢 ' + fmtMs(worst));
-    dot.className = 'nl-dot' + (off ? ' bad' : '');
+    attachCardStrips();
   }
 
   // ---- 详情（Network 视图） ----
@@ -609,28 +614,79 @@ var NezhaLatencyConfig = Object.assign({
     if (state.chart) state.chart.resize();
   }
   function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
-  // ---- 卡片角标（尽力而为） ----
-  function attachCardChips() {
+  // ---- 首页服务器卡片延迟条（尽力而为） ----
+  // 延迟直接展现在卡片底部（Komari 截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，
+  // 下面左右两条分段历史柱（左延迟、右丢包，各 10 段，对应最近 24 小时分 10 桶；
+  // 延迟绿 <200ms · 黄 <300ms；丢包绿 <1% · 黄 <5%）。只让条本身可点：
+  // 点某张卡的条打开该服务器的详情面板；条的点击会 preventDefault +
+  // stopPropagation，不劫持整张卡片的点击（卡片本身点开仍是官方服务器详情页）。
+  // 官方前端是 React 渲染，卡片 DOM 会重建，所以用 5 秒轮询补挂（见 init），
+  // 已存在的条只在数值变化时更新内容，不重复创建。
+  function stripBarsHTML(h, online) {
+    var lat = '', loss = '';
+    for (var i = 0; i < 10; i++) {
+      var bk = (h.buckets && h.buckets[i]) || {};
+      var d = online ? bk.delay : null, l = online ? bk.loss : null;
+      lat += '<i class="' + latencyClass(d) + '"></i>';
+      loss += '<i class="' + lossClass(l) + '"></i>';
+    }
+    return '<div class="nl-card-strip-bars"><div class="nl-bars">' + lat + '</div><div class="nl-bars">' + loss + '</div></div>';
+  }
+  function stripInnerHTML(h, online) {
+    var curDelay = online ? (h.lastDelay != null ? h.lastDelay : h.avgDelay) : null;
+    var curLoss = online ? h.loss : null;
+    return '<div class="nl-card-strip-head"><span>延迟 <b>' + fmtMs(curDelay) + '</b></span><span>丢包率 <b>' + fmtPct(curLoss) + '</b></span></div>' +
+      stripBarsHTML(h, online) +
+      '<div class="nl-bars-label"><span>延迟 · 最近 24 小时</span><span>绿 &lt;200ms · 黄 &lt;300ms · 红 ≥300ms</span></div>';
+  }
+  function openStripDetail(sid) {
+    openModal();
+    var tries = 0;
+    (function tryOpen() {
+      var srv = state.servers.filter(function (x) { return x.id === sid; })[0];
+      if (srv) { openDetail(sid, null); return; }
+      if (++tries < 10) setTimeout(tryOpen, 500);
+    })();
+  }
+  function attachCardStrips() {
     if (!CFG.attachCards || !state.servers.length) return;
     try {
+      var nowMs = Date.now();
       document.querySelectorAll('a[href^="/server/"]').forEach(function (a) {
-        if (a.querySelector('.nl-chip')) return;
         var m = a.getAttribute('href').match(/\/server\/(\d+)/);
         if (!m) return;
-        var h = state.histByServer[Number(m[1])];
-        if (!h || h.lastDelay == null) return;
-        var s = document.createElement('span');
-        s.className = 'nl-chip';
-        s.innerHTML = '<span class="nl-pill ' + latencyClass(h.lastDelay) + '">' + fmtMs(h.lastDelay) + '</span>' +
-          '<span class="nl-pill ' + lossClass(h.loss) + '">丢包 ' + fmtPct(h.loss) + '</span>';
-        a.appendChild(s);
+        var sid = Number(m[1]);
+        var srv = state.servers.filter(function (x) { return x.id === sid; })[0];
+        if (!srv) return;
+        var h = state.histByServer[sid];
+        if (!h) return;
+        var online = isOnline(srv, nowMs);
+        var curDelay = online ? (h.lastDelay != null ? h.lastDelay : h.avgDelay) : null;
+        var bucketSig = (h.buckets || []).map(function (bk) { return bk.delay == null ? '' : Math.round(bk.delay); }).join(',');
+        var key = sid + '|' + (online ? '1' : '0') + '|' + curDelay + '|' + h.loss + '|' + bucketSig;
+        var strip = null;
+        for (var i = 0; i < a.children.length; i++) {
+          if (a.children[i].classList && a.children[i].classList.contains('nl-home-strip')) { strip = a.children[i]; break; }
+        }
+        if (strip) {
+          if (strip._nlKey !== key) { strip.innerHTML = stripInnerHTML(h, online); strip._nlKey = key; }
+          return;
+        }
+        strip = document.createElement('div');
+        strip.className = 'nl-card-strip nl-home-strip';
+        strip.title = '点击查看延迟详情';
+        strip.innerHTML = stripInnerHTML(h, online);
+        strip._nlKey = key;
+        strip.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          openStripDetail(sid);
+        });
+        a.appendChild(strip);
       });
     } catch (e) {}
   }
   // ---- 初始化 ----
   function init() {
-    if (!CFG.showFab) { var f = $('nl-fab'); if (f) f.style.display = 'none'; }
-    $('nl-fab').addEventListener('click', openModal);
     $('nl-close-btn').addEventListener('click', closeModal);
     $('nl-modal-overlay').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
     $('nl-refresh-btn').addEventListener('click', function () { loadAll(); if (state.detailServerId != null) loadDetail(); });
@@ -646,11 +702,14 @@ var NezhaLatencyConfig = Object.assign({
     if (CFG.refreshSec > 0) {
       state.refreshTimer = setInterval(function () {
         if (document.hidden) return;
-        if ($('nl-modal-overlay').classList.contains('show')) { loadAll(); if (state.detailServerId != null) loadDetail(); }
+        loadAll(); // 首页卡片条也要定时刷新；详情只在面板打开时刷新
+        if ($('nl-modal-overlay').classList.contains('show') && state.detailServerId != null) loadDetail();
       }, CFG.refreshSec * 1000);
     }
-    // 卡片角标：页面渲染后尽力挂上
-    setInterval(attachCardChips, 5000);
+    // 首页卡片条：页面渲染后尽力挂上（React 会重建卡片 DOM，5 秒轮询补挂）
+    setInterval(attachCardStrips, 5000);
+    // 首屏就加载数据：卡片条不依赖打开面板也能显示
+    loadAll();
     window.NezhaLatency = { open: openModal, close: closeModal, refresh: loadAll, config: CFG, state: state };
     renderRanges();
     checkLogin().then(function () { renderRanges(); });
