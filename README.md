@@ -216,6 +216,27 @@ Tailwind v4 + shadcn 风格，`:root` / `.dark` 上是 HSL 三元组变量：
   请勿混用两个文件。
 - **不包含欢迎气泡、资产统计、3D 地球、页面保护**（有意排除，见“功能”）。
 
+## 修复记录：延迟面板点了打不开（2026-11-20）
+
+**现象**：status.alicloud.ru（Nezha v2.6.2）上延迟按钮看得见，点多少次面板
+都不弹出；`#nl-fab-summary` 为空、服务器卡片上也没有延迟角标。
+
+**根因**：`NezhaLatency.html:320` / `NezhaLatency.js:77` 是
+`var CFG = window.NezhaLatencyConfig;`，而外层先定义了已合并默认值的局部
+变量 `var NezhaLatencyConfig = Object.assign({默认值…}, (window.NezhaLatencyConfig || {}));`
+（HTML 第 291–315 行）。站上 custom_code 没有定义 `window.NezhaLatencyConfig`，
+所以 `CFG` 是 `undefined`，内层顶层
+`var state = { range: CFG.defaultRange, peakCut: CFG.peakCut.enabled, … }`
+立即抛 `TypeError`，`boot()` / `init()` / 所有点击监听都没跑到；
+`window.NezhaLatency` 也从未创建。按钮是外层 `inject()` 注入的（不依赖
+`CFG`），所以看得见、点不动。数据和 ECharts 都不是瓶颈（`/api/v1/service`
+返回 `success:true`、6 个探针，ECharts 5.5.0 正常加载）。
+
+**修复**：内层改成用已合并默认值的局部变量，
+`var CFG = NezhaLatencyConfig;`（加注释说明原因）。只改 HTML 再跑
+`build-js.py` 重新生成 JS，不直接改 JS。验证：`node --check` 通过，
+JS 里已无 `var CFG = window.NezhaLatencyConfig`。
+
 ## 待验证 / Unknowns
 
 以下内容在源码里无法确认，需要在真实 Nezha v2 实例上验证：

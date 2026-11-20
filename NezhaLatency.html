@@ -317,7 +317,12 @@ var NezhaLatencyConfig = Object.assign({
 <script>
 (function () {
   'use strict';
-  var CFG = window.NezhaLatencyConfig;
+  // 注意：不要用 window.NezhaLatencyConfig！外层已把默认值和用户配置合并
+  // 进局部变量 NezhaLatencyConfig（见上一 <script> 块），站上通常不定义
+  // window.NezhaLatencyConfig；若这里取 window 上的值会得到 undefined，
+  // 随后 state 初始化读 CFG.defaultRange 立即抛 TypeError，导致 boot()、
+  // init() 和所有点击监听都没跑到，按钮看得见却点不动（2026-11-20 实测）。
+  var CFG = NezhaLatencyConfig;
   var $ = function (id) { return document.getElementById(id); };
   function apiUrl(path) {
     if (!CFG.apiBase) return path;
