@@ -51,7 +51,8 @@
     脚本按序执行，其它节点进 body。所以本文件必须是“样式 + 节点 +
     脚本”一体的单文件。注入后每张服务器卡片底部会出现延迟条（当前延迟 +
     丢包率 + 两条分段历史柱），点卡片条即打开该服务器的延迟详情面板；
-    悬浮按钮已移除（2026-11-21）。
+    右侧还有一个延迟开关球（与资产统计 $ 球、地球球同组，top:180px），
+    默认开启绿点，点一下关闭红点、卡片条全部隐藏，再点恢复。
   配置：只改 script 开头的 CONFIG 对象即可，不用动其它代码；也可以在页面
     里先定义 window.NezhaLatencyConfig 再加载本文件，会与默认配置合并。
   依赖：ECharts 5（CDN，jsdelivr 失败时自动换 unpkg；两个都失败时图表区
@@ -87,7 +88,37 @@ html.dark {
   --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));
   --nl-shadow: rgba(0, 0, 0, 0.45);
 }
-/* 悬浮按钮已移除（2026-11-21）：延迟改在服务器卡片底部展示，点卡片条开详情。 */
+/* 延迟显示开关（#nl-fab，2026-11-21）：右侧悬浮按钮，与资产统计（$ 球）/
+   地球球同一列：45px 圆形，位置 $ 球 top:70px、地球球 top:125px，
+   本球 top:180px（55px 间距），right:20px，不挡卡片内容。
+   样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），
+   里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板
+   （开面板改点卡片条）。右上角带状态圆点：开启绿 #22c55e、关闭红 #ef4444。 */
+/* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */
+body.nl-strips-off .nl-home-strip { display: none !important; }
+#nl-fab {
+  position: fixed; right: 20px; top: 180px;
+  width: 45px; height: 45px; border-radius: 50%;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  z-index: 1041;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; padding: 0;
+  color: var(--nl-accent);
+  transition: all 0.3s ease;
+}
+#nl-fab:hover { transform: scale(1.1); }
+#nl-fab svg { display: block; }
+#nl-fab .nl-dot {
+  position: absolute; top: 1px; right: 1px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #22c55e;
+  border: none;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+  pointer-events: none;
+}
+#nl-fab.off .nl-dot { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.8); }
 /* ================= 2. 面板 ================= */
 #nl-modal-overlay {
   position: fixed; inset: 0; z-index: 2000;
@@ -203,7 +234,7 @@ html.dark {
 }
 </style>
 
-<!-- 悬浮按钮已移除（2026-11-21）：延迟改在服务器卡片底部展示，点卡片条开详情 -->
+<!-- 延迟开关球见文件末尾 #nl-fab（与 $ 球、地球球同组右侧悬浮按钮） -->
 <!-- 面板 -->
 <div id="nl-modal-overlay">
   <div id="nl-modal" role="dialog" aria-label="延迟 / 丢包">
@@ -243,6 +274,9 @@ html.dark {
     </div>
   </div>
 </div>
+
+<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐，不开详情面板；圆点绿=开、红=关-->
+<button id="nl-fab" type="button" title="延迟显示：开，点击关闭" aria-label="延迟显示开关" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span class="nl-dot" aria-hidden="true"></span></button>
 
 <script>
 // ================= 2. ECharts 加载（jsdelivr 失败自动换 unpkg，都失败则降级为数据表） =================
@@ -290,7 +324,9 @@ var NezhaLatencyConfig = Object.assign({
     lossAmber: 5
   },
   peakCut: { enabled: true, percentile: 95 },  // 默认开启 Peak cut
-  // 悬浮按钮已移除（2026-11-21）；延迟改在服务器卡片底部展示，点卡片条开详情
+  // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
+  // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
+  // localStorage 'nl-strips-enabled'，刷新后保持。按钮本身不开详情面板。
   attachCards: true,           // 尽力而为：给官方前端的服务器卡片底部加延迟条（当前延迟 + 丢包率 + 两条分段历史柱，点条开详情；失败不影响面板）
   wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
   maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
@@ -373,8 +409,17 @@ var NezhaLatencyConfig = Object.assign({
         return j && ('data' in j) ? j.data : j;
       });
   }
+  // ---- 延迟显示开关（#nl-fab，2026-11-21）：开关卡片条显隐，不开详情面板 ----
+  // 状态存 localStorage 'nl-strips-enabled'，'1' = 开（默认），'0' = 关；
+  // 读不到或异常时默认开启。显隐用 body 上的 .nl-strips-off class + CSS 控制，
+  // 开关关闭期间新注入的条也会自动隐藏。
+  var STRIPS_KEY = 'nl-strips-enabled';
+  function readStripsEnabled() {
+    try { return localStorage.getItem(STRIPS_KEY) !== '0'; } catch (e) { return true; }
+  }
   var state = {
     member: null,              // null=未知，true=已登录，false=游客
+    stripsEnabled: readStripsEnabled(), // 延迟卡片条开关：true=显示（绿点），false=隐藏（红点）
     servers: [],               // WS 来的服务器
     services: [],              // [{id, name, type, ...}]，来自 /api/v1/service
     svcStats: {},              // serviceId -> {avgDelay, uptime, totalUp, totalDown}
@@ -910,8 +955,24 @@ var NezhaLatencyConfig = Object.assign({
       });
     } catch (e) {}
   }
+  // 把开关状态同时写到三处：body class（控制条显隐）、按钮圆点/title、localStorage
+  function applyStripsEnabled() {
+    var on = !!state.stripsEnabled;
+    document.body.classList.toggle('nl-strips-off', !on);
+    var fab = $('nl-fab');
+    if (fab) {
+      fab.classList.toggle('off', !on);
+      fab.title = on ? '延迟显示：开，点击关闭' : '延迟显示：关，点击开启';
+      fab.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    try { localStorage.setItem(STRIPS_KEY, on ? '1' : '0'); } catch (e) {}
+  }
+  function toggleStrips() { state.stripsEnabled = !state.stripsEnabled; applyStripsEnabled(); }
   // ---- 初始化 ----
   function init() {
+    var fab = $('nl-fab');
+    if (fab) fab.addEventListener('click', function () { toggleStrips(); });
+    applyStripsEnabled();
     $('nl-close-btn').addEventListener('click', closeModal);
     $('nl-modal-overlay').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
     $('nl-refresh-btn').addEventListener('click', function () { loadAll(); if (state.detailServerId != null) loadDetail(); });
@@ -935,7 +996,7 @@ var NezhaLatencyConfig = Object.assign({
     setInterval(attachCardStrips, 5000);
     // 首屏就加载数据：卡片条不依赖打开面板也能显示
     loadAll();
-    window.NezhaLatency = { open: openModal, close: closeModal, refresh: loadAll, config: CFG, state: state };
+    window.NezhaLatency = { open: openModal, close: closeModal, refresh: loadAll, toggleStrips: toggleStrips, config: CFG, state: state };
     renderRanges();
     checkLogin().then(function () { renderRanges(); });
   }

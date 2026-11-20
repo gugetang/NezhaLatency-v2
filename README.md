@@ -73,6 +73,8 @@ Komari 侧没有公开的延迟 API 文档可供对照（见“待验证”）�
 2. 把 `NezhaLatency.html` 的**全部内容**复制粘贴进去，保存。
 3. 刷新用户前台首页，每张服务器卡片底部会出现延迟条（当前延迟 +
    丢包率 + 两条分段历史柱），点卡片条即打开该服务器的延迟详情面板。
+   右侧还有一个延迟开关球（与资产统计 $ 球、地球球同组，top:180px），
+   默认开启绿点；点一下关闭红点、卡片条全部隐藏，再点恢复，状态刷新后保持。
    面板内点服务卡片可按服务筛选详情；点服务器行打开该服务器的 Network 详情。
 
 > 注入机制（已验证）：`custom_code` / `custom_code_dashboard` 字段仍在 v2
@@ -237,6 +239,31 @@ Tailwind v4 + shadcn 风格，`:root` / `.dark` 上是 HSL 三元组变量：
 `var CFG = NezhaLatencyConfig;`（加注释说明原因）。只改 HTML 再跑
 `build-js.py` 重新生成 JS，不直接改 JS。验证：`node --check` 通过，
 JS 里已无 `var CFG = window.NezhaLatencyConfig`。
+
+## 改动记录：延迟开关球（保留按钮，默认开启绿点）（2026-11-21）
+
+**用户要求**：保留延迟按钮，默认开启（绿点），延迟展示在卡片，手动关闭（红点）；
+按钮放在资产统计（$ 球）和地球（地球仪球）旁边；按钮不要边框、透底，像 Komari 站截图那样。
+
+**改动**：
+- 悬浮按钮以开关形式回来（`#nl-fab`）：不再打开详情面板，只开关卡片条的显隐。
+  位置排在同一右侧悬浮按钮组：$ 球 top:70px、地球球 top:125px、本球 top:180px
+  （55px 间距），right:20px，相邻不重叠、不挡卡片内容；45px 圆形、里面是 24px
+  描边仪表图标、悬停放大 1.1 倍。样式按 Komari 站截图：不要边框、透底（背景透明、
+  无阴影、无毛玻璃），只在右上角用绿/红圆点表示开关状态。
+- 状态圆点：按钮右上角一个 12px 圆点，默认开启绿色 `#22c55e`、卡片条全部显示；
+  点一下关闭变红 `#ef4444`、卡片条全部隐藏；再点恢复绿色。按钮 title 随状态变
+  （“延迟显示：开，点击关闭”/“延迟显示：关，点击开启”）。
+- 显隐实现：`body` 上的 `.nl-strips-off` class + CSS
+  （`body.nl-strips-off .nl-home-strip { display: none !important; }`），
+  开关关闭期间新注入的条也会自动隐藏；状态存 localStorage 键
+  `nl-strips-enabled`（`'1'` 开 / `'0'` 关，默认 `'1'`），刷新页面后保持
+  上次选择，读不到或异常时默认开启。
+- 相关代码：`readStripsEnabled()` / `applyStripsEnabled()` / `toggleStrips()`，
+  `state.stripsEnabled` 反映开关状态，`window.NezhaLatency.toggleStrips`
+  可程序开关；`init()` 里绑定按钮点击并应用初始状态。
+- 卡片条、点卡片条开详情、详情面板、首屏加载、CFG 取值
+  （`var CFG = NezhaLatencyConfig;`）全部不动。
 
 ## 改动记录：悬浮按钮移除，延迟改在卡片上展示（2026-11-21）
 
