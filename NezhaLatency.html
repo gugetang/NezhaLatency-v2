@@ -195,6 +195,9 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-card-strip { margin-top: 6px; }
 .nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }
 .nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
+/* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，
+   截图实测该行字高 22px、条行字高 25px；只改首页条，面板内服务卡片不动） */
+.nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }
 .nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }
 .nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }
 /* 服务器表 */
@@ -231,7 +234,7 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-home-strip { cursor: pointer; border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
 .nl-home-strip:hover { outline: 1px solid var(--nl-accent); outline-offset: 2px; border-radius: 8px; }
 /* 首页卡片条：每地区一行，都是截图样式（一行“延迟 xxx ms　丢包率 x.x%”，
-   下面左右两条 10 段分段柱并排：左延迟、右丢包）。条本身是卡片内最底部元素。 */
+   下面左右两条 12 段分段柱并排：左延迟、右丢包）。条本身是卡片内最底部元素。 */
 .nl-region-row { padding: 4px 0 1px; }
 .nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
@@ -334,7 +337,7 @@ var NezhaLatencyConfig = Object.assign({
   // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
   // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
   // localStorage 'nl-strips-enabled'，刷新后保持。按钮本身不开详情面板。
-  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时 10 段分段柱，截图样式，点条开详情；失败不影响面板）
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时 12 段分段柱，截图样式，点条开详情；失败不影响面板）
   wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
   maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
 }, (window.NezhaLatencyConfig || {}));
@@ -523,8 +526,8 @@ var NezhaLatencyConfig = Object.assign({
   // 用各服务的 1d 历史汇总出每台服务器的延迟/丢包（只发 S 次请求，S=服务数）
   function loadServerLatency() {
     var nowMs = Date.now();
-    var dayStart = nowMs - 86400000, bucketMs = 8640000; // 首页卡片条：最近 24 小时分 10 桶
-    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs, buckets:[10]{dSum,dN,up,down}}
+    var dayStart = nowMs - 86400000, bucketMs = 7200000; // 首页卡片条：最近 24 小时分 12 桶（每桶 2 小时）
+    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs, buckets:[12]{dSum,dN,up,down}}
     var gAgg = {}; // serverId -> prefix -> {lastDelay, lastTs, up1h, down1h}
     var jobs = state.services.map(function (s) {
       return apiGet('/api/v1/service/' + s._id + '/history?period=1d').then(function (data) {
@@ -533,7 +536,7 @@ var NezhaLatencyConfig = Object.assign({
           var a = agg[sv.server_id];
           if (!a) {
             a = agg[sv.server_id] = { delays: [], up: 0, down: 0, lastDelay: null, lastTs: 0, buckets: [] };
-            for (var bi = 0; bi < 10; bi++) a.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
+            for (var bi = 0; bi < 12; bi++) a.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
           }
           if (typeof st.avg_delay === 'number') a.delays.push(st.avg_delay);
           a.up += st.total_up || 0; a.down += st.total_down || 0;
@@ -543,7 +546,7 @@ var NezhaLatencyConfig = Object.assign({
             var m = tsToMs(p.ts);
             if (m == null) return;
             var idx = Math.floor((m - dayStart) / bucketMs);
-            if (idx < 0 || idx > 9) return;
+            if (idx < 0 || idx > 11) return;
             var bk = a.buckets[idx];
             if (typeof p.delay === 'number') { bk.dSum += p.delay; bk.dN++; }
             if (p.status === 1) bk.up++; else if (p.status === 0) bk.down++;
@@ -566,7 +569,7 @@ var NezhaLatencyConfig = Object.assign({
               var gr = gBySid[gPrefix] || (gBySid[gPrefix] = { lastDelay: null, lastTs: 0, up1h: 0, down1h: 0, buckets: null });
               if (!gr.buckets) {
                 gr.buckets = [];
-                for (var gbi = 0; gbi < 10; gbi++) gr.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
+                for (var gbi = 0; gbi < 12; gbi++) gr.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
               }
               gPts.forEach(function (p) {
                 if (!p) return;
@@ -575,11 +578,11 @@ var NezhaLatencyConfig = Object.assign({
                   if (p.status === 1) gr.up1h++; else if (p.status === 0) gr.down1h++;
                 }
                 if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0 && m != null && m > gr.lastTs) { gr.lastTs = m; gr.lastDelay = p.delay; }
-                // 该地区分段柱：最近 24 小时分 10 桶（每桶 2.4 小时），只计有效点
+                // 该地区分段柱：最近 24 小时分 12 桶（每桶 2 小时），只计有效点
                 // （status=1 且 delay>0）；桶内无有效点时延迟/丢包均为 null，渲染成灰段
                 if (m != null) {
                   var gidx = Math.floor((m - dayStart) / bucketMs);
-                  if (gidx >= 0 && gidx <= 9) {
+                  if (gidx >= 0 && gidx <= 11) {
                     var gbk = gr.buckets[gidx];
                     if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0) { gbk.dSum += p.delay; gbk.dN++; }
                     if (p.status === 1) gbk.up++; else if (p.status === 0) gbk.down++;
@@ -616,7 +619,7 @@ var NezhaLatencyConfig = Object.assign({
             delay: (gr && gr.lastTs && (nowMs - gr.lastTs) <= REGION_STALE_MS) ? gr.lastDelay : null,
             loss: (gr && tot) ? (gr.down1h / tot) * 100 : null,
             ts: (gr && gr.lastTs) || null, n1h: tot,
-            // 分段柱：该地区最近 24 小时 10 桶（每桶 2.4 小时），每桶延迟 = 桶内有效点
+            // 分段柱：该地区最近 24 小时 12 桶（每桶 2 小时），每桶延迟 = 桶内有效点
             // 平均延迟，丢包 = 桶内 down/(up+down)；桶内无有效点时该段为 null（灰段）
             buckets: (gr && gr.buckets) ? gr.buckets.map(function (bk) {
               var btot = bk.up + bk.down;
@@ -999,11 +1002,11 @@ var NezhaLatencyConfig = Object.assign({
   function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
   // ---- 首页服务器卡片延迟条：地区实时值（尽力而为） ----
   // 每张卡内最底部按地区各一行（行数 = 后端服务分组数，动态变），每行都是截图
-  // 样式：第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右两条 10 段分段柱
+  // 样式：第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右两条 12 段分段柱
   // 并排（左延迟、右丢包）。取数口径（见 loadServerLatency）：每组取组内各服务
   // history 里最近一个有效数据点做当前延迟（status=1 且 delay>0，超过 10 分钟
   // 视为过期显示 --），丢包 = 最近 1 小时内该组点的 down/(up+down)；分段柱 =
-  // 该地区最近 24 小时 10 桶（每桶 2.4 小时），每桶延迟 = 桶内有效点平均延迟，
+  // 该地区最近 24 小时 12 桶（每桶 2 小时），每桶延迟 = 桶内有效点平均延迟，
   // 丢包 = 桶内 down/(up+down)，桶内无有效点时该段为灰色。只计近期有效的服务，
   // 失联的 v6 不混进组里；某组全部服务无效该行显示 --。面板里的服务卡片仍保留
   // 分段柱，面板服务器表仍保留 24h 数值。条挂在挂载元素的最末尾（见
@@ -1026,13 +1029,13 @@ var NezhaLatencyConfig = Object.assign({
     return (state.regionLabel && state.regionLabel[prefix]) || prefix;
   }
   // 截图样式：每地区一行，第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右
-  // 两条 10 段分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
+  // 两条 12 段分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
   function stripRegionRowHTML(prefix, g, online) {
     var d = online ? (g && g.delay) : null;
     var l = online ? (g && g.loss) : null;
     var bk = (g && g.buckets) || [];
     var barsLat = '', barsLoss = '';
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 12; i++) {
       var b = bk[i] || {};
       barsLat += '<i class="' + latencyClass(b.delay) + '"></i>';
       barsLoss += '<i class="' + lossClass(b.loss) + '"></i>';
