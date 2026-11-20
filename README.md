@@ -42,6 +42,32 @@ Komari 侧没有公开的延迟 API 文档可供对照（见“待验证”）�
 
 ## 安装（Nezha v2）
 
+### 方式一：script 引用（推荐，一行搞定）
+
+在 Nezha v2 后台（`/dashboard/`）→ **设置** → **自定义代码**
+（`custom_code`）里只粘贴这一行，保存即可：
+
+```html
+<script src="https://cdn.jsdelivr.net/gh/gugetang/NezhaLatency-v2@main/NezhaLatency.js"></script>
+```
+
+`NezhaLatency.js` 是由 `NezhaLatency.html` 用 `build-js.py` 生成的
+同款单文件 JS：它自己注入样式和面板节点，再执行同样的逻辑，
+和直接粘贴 HTML 效果一样。改配置时，在这行前面再加一行：
+
+```html
+<script>window.NezhaLatencyConfig = { refreshSec: 30 };</script>
+<script src="https://cdn.jsdelivr.net/gh/gugetang/NezhaLatency-v2@main/NezhaLatency.js"></script>
+```
+
+注意：jsdelivr 对 `@main` 分支有缓存（最长约 12 小时），刚推上去的新版
+可能不会立刻生效；等缓存过期，或改用固定提交号引用，例如
+`https://cdn.jsdelivr.net/gh/gugetang/NezhaLatency-v2@2d817a2d/NezhaLatency.js`。
+也可以用 jsdelivr 的 purge 链接清缓存：
+`https://purge.jsdelivr.net/gh/gugetang/NezhaLatency-v2@main/NezhaLatency.js`。
+
+### 方式二：直接粘贴 HTML
+
 1. 登录 Nezha v2 后台（`/dashboard/`）→ **设置** → 找到**自定义代码**
    （`custom_code`，用户前台用）。
 2. 把 `NezhaLatency.html` 的**全部内容**复制粘贴进去，保存。
