@@ -93,8 +93,8 @@ html.dark {
    本球 top:180px（55px 间距），right:20px，不挡卡片内容。
    样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），
    里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板
-   （开面板改点卡片条）。按钮中心带状态圆点：开启绿 #22c55e、关闭红 #ef4444，
-   大小照概览卡“在线服务器”那个绿点（h-2 w-2，8px）。 */
+   （开面板改点卡片条）。按钮本身不带圆点：图标颜色表示状态，
+   开启绿 #22c55e、关闭红 #ef4444（点击切换）。 */
 /* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */
 body.nl-strips-off .nl-home-strip { display: none !important; }
 #nl-fab {
@@ -106,20 +106,12 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
   z-index: 1041;
   display: flex; align-items: center; justify-content: center;
   cursor: pointer; padding: 0;
-  color: var(--nl-accent);
+  color: #22c55e;
   transition: all 0.3s ease;
 }
 #nl-fab:hover { transform: scale(1.1); }
+#nl-fab.off { color: #ef4444; }
 #nl-fab svg { display: block; }
-#nl-fab .nl-dot {
-  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
-  width: 8px; height: 8px; border-radius: 50%;
-  background: #22c55e;
-  border: none;
-  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
-  pointer-events: none;
-}
-#nl-fab.off .nl-dot { background: #ef4444; box-shadow: 0 0 6px rgba(239, 68, 68, 0.8); }
 /* ================= 2. 面板 ================= */
 #nl-modal-overlay {
   position: fixed; inset: 0; z-index: 2000;
@@ -286,8 +278,8 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
   </div>
 </div>
 
-<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐，不开详情面板；圆点绿=开、红=关-->
-<button id="nl-fab" type="button" title="延迟显示：开，点击关闭" aria-label="延迟显示开关" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg><span class="nl-dot" aria-hidden="true"></span></button>
+<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐，不开详情面板；图标绿=开、红=关-->
+<button id="nl-fab" type="button" title="延迟显示：开，点击关闭" aria-label="延迟显示开关" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></button>
 
 <script>
 // ================= 2. ECharts 加载（jsdelivr 失败自动换 unpkg，都失败则降级为数据表） =================
@@ -1184,7 +1176,7 @@ var NezhaLatencyConfig = Object.assign({
     });
     cardObserver.observe(root, { childList: true, subtree: true });
   }
-  // 把开关状态同时写到三处：body class（控制条显隐）、按钮圆点/title、localStorage
+  // 把开关状态同时写到三处：body class（控制条显隐）、按钮颜色/title、localStorage
   function applyStripsEnabled() {
     var on = !!state.stripsEnabled;
     document.body.classList.toggle('nl-strips-off', !on);
