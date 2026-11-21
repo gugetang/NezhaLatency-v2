@@ -50,7 +50,7 @@
     InjectContext(custom_code) 按文档顺序注入：样式与链接进 head，
     脚本按序执行，其它节点进 body。所以本文件必须是“样式 + 节点 +
     脚本”一体的单文件。注入后每张服务器卡片底部会出现延迟条（当前延迟 +
-    丢包率 + 两条分段历史柱），点卡片条即打开该服务器的延迟详情面板；
+    丢包率 + 两条分段历史柱），条只作展示、不可点（点条会落到卡片本身，进官方服务器详情页）；
     右侧还有一个延迟开关球（与资产统计 $ 球、地球球同组，top:180px），
     默认开启绿点，点一下关闭红点、卡片条全部隐藏，再点恢复。
   配置：只改 script 开头的 CONFIG 对象即可，不用动其它代码；也可以在页面
@@ -223,11 +223,10 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }
 .nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }
 .nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }
-/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只让条本身可点 */
-.nl-home-strip { cursor: pointer; border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
-.nl-home-strip:hover { outline: 1px solid var(--nl-accent); outline-offset: 2px; border-radius: 8px; }
-/* 首页卡片条：每地区一行，都是截图样式（一行“延迟 xxx ms　丢包率 x.x%”，
-   下面左右两条 12 段分段柱并排：左延迟、右丢包）。条本身是卡片内最底部元素。 */
+/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */
+.nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
+/* 首页卡片条：每地区一行，都是截图样式（一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，
+   下面左右两条分段柱并排：左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */
 .nl-region-row { padding: 4px 0 1px; }
 .nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
@@ -330,7 +329,7 @@ var NezhaLatencyConfig = Object.assign({
   // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
   // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
   // localStorage 'nl-strips-enabled'，刷新后保持。按钮本身不开详情面板。
-  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时 12 段分段柱，截图样式，点条开详情；失败不影响面板）
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段），截图样式，条只作展示不可点；失败不影响面板）
   wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
   maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
 }, (window.NezhaLatencyConfig || {}));
@@ -519,7 +518,8 @@ var NezhaLatencyConfig = Object.assign({
   // 用各服务的 1d 历史汇总出每台服务器的延迟/丢包（只发 S 次请求，S=服务数）
   function loadServerLatency() {
     var nowMs = Date.now();
-    var dayStart = nowMs - 86400000, bucketMs = 7200000; // 首页卡片条：最近 24 小时分 12 桶（每桶 2 小时）
+    var dayStart = nowMs - 86400000, bucketMs = 7200000; // 服务器 24h 桶：12 桶（每桶 2 小时，面板用）
+    var groupBucketMs = 3600000, GROUP_BUCKETS = 24; // 卡片条地区分段柱：最近 24 小时分 24 桶（每桶 1 小时）；手机端渲染时相邻两桶合并成 12 段
     var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs, buckets:[12]{dSum,dN,up,down}}
     var gAgg = {}; // serverId -> prefix -> {lastDelay, lastTs, up1h, down1h}
     var jobs = state.services.map(function (s) {
@@ -562,7 +562,7 @@ var NezhaLatencyConfig = Object.assign({
               var gr = gBySid[gPrefix] || (gBySid[gPrefix] = { lastDelay: null, lastTs: 0, up1h: 0, down1h: 0, buckets: null });
               if (!gr.buckets) {
                 gr.buckets = [];
-                for (var gbi = 0; gbi < 12; gbi++) gr.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
+                for (var gbi = 0; gbi < GROUP_BUCKETS; gbi++) gr.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
               }
               gPts.forEach(function (p) {
                 if (!p) return;
@@ -571,11 +571,11 @@ var NezhaLatencyConfig = Object.assign({
                   if (p.status === 1) gr.up1h++; else if (p.status === 0) gr.down1h++;
                 }
                 if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0 && m != null && m > gr.lastTs) { gr.lastTs = m; gr.lastDelay = p.delay; }
-                // 该地区分段柱：最近 24 小时分 12 桶（每桶 2 小时），只计有效点
+                // 该地区分段柱：最近 24 小时分 24 桶（每桶 1 小时），只计有效点
                 // （status=1 且 delay>0）；桶内无有效点时延迟/丢包均为 null，渲染成灰段
                 if (m != null) {
-                  var gidx = Math.floor((m - dayStart) / bucketMs);
-                  if (gidx >= 0 && gidx <= 11) {
+                  var gidx = Math.floor((m - dayStart) / groupBucketMs);
+                  if (gidx >= 0 && gidx < GROUP_BUCKETS) {
                     var gbk = gr.buckets[gidx];
                     if (p.status === 1 && typeof p.delay === 'number' && p.delay > 0) { gbk.dSum += p.delay; gbk.dN++; }
                     if (p.status === 1) gbk.up++; else if (p.status === 0) gbk.down++;
@@ -612,7 +612,7 @@ var NezhaLatencyConfig = Object.assign({
             delay: (gr && gr.lastTs && (nowMs - gr.lastTs) <= REGION_STALE_MS) ? gr.lastDelay : null,
             loss: (gr && tot) ? (gr.down1h / tot) * 100 : null,
             ts: (gr && gr.lastTs) || null, n1h: tot,
-            // 分段柱：该地区最近 24 小时 12 桶（每桶 2 小时），每桶延迟 = 桶内有效点
+            // 分段柱：该地区最近 24 小时 24 桶（每桶 1 小时），每桶延迟 = 桶内有效点
             // 平均延迟，丢包 = 桶内 down/(up+down)；桶内无有效点时该段为 null（灰段）
             buckets: (gr && gr.buckets) ? gr.buckets.map(function (bk) {
               var btot = bk.up + bk.down;
@@ -1004,9 +1004,8 @@ var NezhaLatencyConfig = Object.assign({
   // 失联的 v6 不混进组里；某组全部服务无效该行显示 --。面板里的服务卡片仍保留
   // 分段柱，面板服务器表仍保留 24h 数值。条挂在挂载元素的最末尾（见
   // attachCardStrips），React 重建后补挂也会把它挪回最底部。
-  // 只让条本身可点：点某张卡的条打开该服务器的详情面板；条的点击会
-  // preventDefault + stopPropagation，不劫持整张卡片的点击（卡片本身点开仍是
-  // 官方服务器详情页）。
+  // 条只作展示、不可点：不绑点击，点条会冒泡到卡片本身（官方服务器详情页），
+  // 不再打开延迟详情面板（2026-11-21 用户要求取消点条进详情）。
   // 根因（2026-11-21 实测前端 bundle /assets/index.CxhV59WK.js）：nezha-dash
   // 1dd038b 首页卡片根本不是 <a href="/server/N">，而是 Card <div>（class 含
   // cursor-pointer），点击靠 React Router navigate(`/server/${id}`)；旧代码的
@@ -1021,21 +1020,29 @@ var NezhaLatencyConfig = Object.assign({
   function regionLabel(prefix) {
     return (state.regionLabel && state.regionLabel[prefix]) || prefix;
   }
-  // 截图样式：每地区一行，第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右
-  // 两条 12 段分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
+  // 柱体段数：手机（宽 <=768）12 段、电脑 24 段；地区桶按 24 桶（每桶 1 小时）聚合，
+  // 手机端把相邻两桶合并成一段（2 小时）
+  function stripSegmentCount() { return (window.innerWidth || 1024) <= 768 ? 12 : 24; }
+  function mergeBucketPair(b1, b2) {
+    function avg(a, b) { if (a == null) return b; if (b == null) return a; return (a + b) / 2; }
+    return { delay: avg(b1.delay, b2.delay), loss: avg(b1.loss, b2.loss) };
+  }
+  // 截图样式：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，下面左右
+  // 两条分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
   function stripRegionRowHTML(prefix, g, online) {
     var d = online ? (g && g.delay) : null;
     var l = online ? (g && g.loss) : null;
     var bk = (g && g.buckets) || [];
+    var n = stripSegmentCount();
     var barsLat = '', barsLoss = '';
-    for (var i = 0; i < 12; i++) {
-      var b = bk[i] || {};
+    for (var i = 0; i < n; i++) {
+      var b = n === 24 ? (bk[i] || {}) : mergeBucketPair(bk[2 * i] || {}, bk[2 * i + 1] || {});
       barsLat += '<i class="' + latencyClass(b.delay) + '"></i>';
       barsLoss += '<i class="' + lossClass(b.loss) + '"></i>';
     }
     var dTxt = (d == null || isNaN(d)) ? '--' : Math.round(d) + ' ms';
     return '<div class="nl-region-row">' +
-      '<div class="nl-card-strip-head"><span><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span> · 延迟 <b>' + dTxt + '</b></span><span>丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
+      '<div class="nl-card-strip-head"><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span><span>延迟 <b>' + dTxt + '</b> · 丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
       '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
       '</div>';
   }
@@ -1043,15 +1050,6 @@ var NezhaLatencyConfig = Object.assign({
     h = h || {};
     var groups = h.groups || {};
     return (state.regionGroups || []).map(function (prefix) { return stripRegionRowHTML(prefix, groups[prefix], online); }).join('');
-  }
-  function openStripDetail(sid) {
-    openModal();
-    var tries = 0;
-    (function tryOpen() {
-      var srv = state.servers.filter(function (x) { return x.id === sid; })[0];
-      if (srv) { openDetail(sid, null); return; }
-      if (++tries < 10) setTimeout(tryOpen, 500);
-    })();
   }
   // 首页卡片定位：见本节文件头注释。返回 [{wrap, cardEl, mount, sid}]。
   // wrap = 列表容器的直接子元素；cardEl = 真正的卡片（class 含 cursor-pointer）；
@@ -1103,7 +1101,7 @@ var NezhaLatencyConfig = Object.assign({
     return cards;
   }
   function stripKey(sid, h, online) {
-    var parts = [sid, online ? '1' : '0'];
+    var parts = [sid, online ? '1' : '0', 'seg' + stripSegmentCount()]; // 段数变了也要重绘（窗口缩放过手机/电脑分界）
     (state.regionGroups || []).forEach(function (prefix) {
       var g = (h.groups || {})[prefix] || {};
       parts.push(regionLabel(prefix)); // 行名（后端服务名）变了也要重绘
@@ -1112,14 +1110,6 @@ var NezhaLatencyConfig = Object.assign({
       parts.push(((g.buckets || []).map(function (bk) { return bk.delay == null ? '' : Math.round(bk.delay); }).join(',')));
     });
     return parts.join('|');
-  }
-  function bindStripClick(strip) {
-    if (strip._nlClickBound) return;
-    strip._nlClickBound = true;
-    strip.addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      openStripDetail(strip._nlSid);
-    });
   }
   function attachCardStrips() {
     if (!CFG.attachCards || !state.servers.length || !state.regionGroups.length) return;
@@ -1143,7 +1133,6 @@ var NezhaLatencyConfig = Object.assign({
         }
         if (strip) {
           if (strip._nlKey !== key) { strip.innerHTML = stripInnerHTML(h, online); strip._nlKey = key; }
-          strip._nlSid = c.sid; bindStripClick(strip); // 重建/克隆残留的条可能丢了监听，复用时补绑
           // 条必须是挂载元素的最底部：位置不对（模式切换、React 重建后又插了新
           // 节点）就挪到末尾；appendChild 已存在的节点会先把它移走再追加
           if (strip.parentNode !== c.mount || c.mount.lastChild !== strip) c.mount.appendChild(strip);
@@ -1151,11 +1140,8 @@ var NezhaLatencyConfig = Object.assign({
         }
         strip = document.createElement('div');
         strip.className = 'nl-card-strip nl-home-strip';
-        strip.title = '点击查看延迟详情';
         strip.innerHTML = stripInnerHTML(h, online);
         strip._nlKey = key;
-        strip._nlSid = c.sid;
-        bindStripClick(strip);
         c.mount.appendChild(strip);
       });
     } catch (e) {}
@@ -1202,7 +1188,7 @@ var NezhaLatencyConfig = Object.assign({
       if (state.detailServerId != null) loadDetail();
     });
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
-    window.addEventListener('resize', function () { if (state.chart) state.chart.resize(); });
+    window.addEventListener('resize', function () { if (state.chart) state.chart.resize(); scheduleAttach(); }); // 窗口缩放过手机/电脑分界时重算柱体段数
     // 主题变化时重绘图表颜色
     var mo = new MutationObserver(function () { if (state.chart && $('nl-modal-overlay').classList.contains('show') && state.detailServerId != null) loadDetail(); });
     mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
