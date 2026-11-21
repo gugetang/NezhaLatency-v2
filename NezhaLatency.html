@@ -192,7 +192,13 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
    截图实测该行字高 22px、条行字高 25px；只改首页条，面板内服务卡片不动） */
 .nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }
 .nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }
-.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }
+.nl-bar-cell { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; }
+.nl-card-strip-bars .nl-bars { flex: 1; min-width: 0; margin: 0; height: 4px; gap: 2px; }
+/* 柱体右侧的数值：每条柱后面跟自己的值（延迟值在延迟柱右、丢包值在丢包柱右），
+   不再都堆在整行最右边；字号与卡片“价格/剩余天数”行一致（首页 10px） */
+.nl-bar-val { white-space: nowrap; font-size: 0.75rem; color: var(--nl-muted); font-variant-numeric: tabular-nums; }
+.nl-bar-val b { color: var(--nl-fg); font-variant-numeric: tabular-nums; }
+.nl-home-strip .nl-bar-val, .nl-home-strip .nl-bar-val b { font-size: 0.625rem; }
 /* 服务器表 */
 .nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
 .nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
@@ -225,8 +231,9 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }
 /* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */
 .nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
-/* 首页卡片条：每地区一行，都是截图样式（一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，
-   下面左右两条分段柱并排：左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */
+/* 首页卡片条：每地区一行，第一行只有地区名（靠左）；下面左右两条分段柱并排
+   （左延迟、右丢包），每条柱后面紧跟自己的数值（延迟值在延迟柱右、丢包值在
+   丢包柱右）；柱体手机 12 段、电脑 24 段。条本身是卡片内最底部元素，只作展示，不可点。 */
 .nl-region-row { padding: 4px 0 1px; }
 .nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
@@ -1027,8 +1034,9 @@ var NezhaLatencyConfig = Object.assign({
     function avg(a, b) { if (a == null) return b; if (b == null) return a; return (a + b) / 2; }
     return { delay: avg(b1.delay, b2.delay), loss: avg(b1.loss, b2.loss) };
   }
-  // 截图样式：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，下面左右
-  // 两条分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
+  // 截图样式：每地区一行，第一行只有地区名（靠左）；下面左右两条分段柱并排
+  // （左延迟、右丢包），每条柱后面紧跟自己的数值（延迟值在延迟柱右、丢包值
+  // 在丢包柱右），不再都堆在整行最右边；桶内无数据时该段为灰色，不编数值
   function stripRegionRowHTML(prefix, g, online) {
     var d = online ? (g && g.delay) : null;
     var l = online ? (g && g.loss) : null;
@@ -1042,8 +1050,11 @@ var NezhaLatencyConfig = Object.assign({
     }
     var dTxt = (d == null || isNaN(d)) ? '--' : Math.round(d) + ' ms';
     return '<div class="nl-region-row">' +
-      '<div class="nl-card-strip-head"><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span><span>延迟 <b>' + dTxt + '</b> · 丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
-      '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
+      '<div class="nl-card-strip-head"><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span></div>' +
+      '<div class="nl-card-strip-bars">' +
+      '<div class="nl-bar-cell"><div class="nl-bars">' + barsLat + '</div><span class="nl-bar-val">延迟 <b>' + dTxt + '</b></span></div>' +
+      '<div class="nl-bar-cell"><div class="nl-bars">' + barsLoss + '</div><span class="nl-bar-val">丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
+      '</div>' +
       '</div>';
   }
   function stripInnerHTML(h, online) {
