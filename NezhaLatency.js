@@ -9,7 +9,7 @@
   // Avoid double injection when custom_code is re-applied in the same page.
   if (document.getElementById('nl-modal-overlay')) return;
   var VERSION = 'NezhaLatency-v2';
-  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* 延迟显示开关（#nl-fab，2026-11-21）：右侧悬浮按钮，与资产统计（$ 球）/\n   地球球同一列：45px 圆形，位置 $ 球 top:70px、地球球 top:125px，\n   本球 top:180px（55px 间距），right:20px，不挡卡片内容。\n   样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），\n   里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板\n   （开面板改点卡片条）。按钮本身不带圆点：图标颜色表示状态，\n   开启绿 #22c55e、关闭红 #ef4444（点击切换）。 */\n/* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */\nbody.nl-strips-off .nl-home-strip { display: none !important; }\n#nl-fab {\n  position: fixed; right: 20px; top: 180px;\n  width: 45px; height: 45px; border-radius: 50%;\n  background: transparent;\n  border: none;\n  box-shadow: none;\n  z-index: 1041;\n  display: flex; align-items: center; justify-content: center;\n  cursor: pointer; padding: 0;\n  color: #22c55e;\n  transition: all 0.3s ease;\n}\n#nl-fab:hover { transform: scale(1.1); }\n#nl-fab.off { color: #ef4444; }\n#nl-fab svg { display: block; }\n/* ================= 2. 面板 ================= */\n#nl-modal-overlay {\n  position: fixed; inset: 0; z-index: 2000;\n  background: rgba(0, 0, 0, 0.45);\n  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);\n  display: none; align-items: flex-start; justify-content: center;\n  overflow-y: auto; padding: 24px 12px;\n}\n#nl-modal-overlay.show { display: flex; }\n#nl-modal {\n  width: min(1060px, 96vw);\n  background: var(--nl-card); color: var(--nl-fg);\n  border: 1px solid var(--nl-border); border-radius: 16px;\n  box-shadow: 0 16px 48px var(--nl-shadow);\n  overflow: hidden;\n}\n.nl-modal-head {\n  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;\n  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);\n}\n.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }\n.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }\n.nl-modal-head .nl-spacer { flex: 1; }\n.nl-btn {\n  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);\n  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;\n}\n.nl-btn:hover { border-color: var(--nl-accent); }\n.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }\n.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }\n.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }\n.nl-body { padding: 16px 18px 20px; }\n.nl-notice {\n  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;\n  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);\n  color: var(--nl-fg); font-size: 0.83rem;\n}\n.nl-notice.show { display: block; }\n.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }\n.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }\n.nl-stat {\n  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;\n  padding: 10px 14px; background: var(--nl-bg);\n}\n.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }\n.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }\n.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }\n.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }\n.nl-section-title:first-child { margin-top: 0; }\n/* 服务卡片 */\n.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }\n.nl-svc {\n  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;\n  background: var(--nl-bg); cursor: pointer;\n}\n.nl-svc:hover { border-color: var(--nl-accent); }\n.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-svc-top { display: flex; align-items: center; gap: 8px; }\n.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }\n.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }\n.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }\n.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排\n   尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，\n   下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */\n.nl-card-strip { margin-top: 6px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }\n/* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，\n   截图实测该行字高 22px、条行字高 25px；只改首页条，面板内服务卡片不动） */\n.nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }\n.nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }\n/* 横向列表模式：卡片是横向 flex 行（名称/分隔线/统计三项，合计约 870px，小于卡片\n   最小宽 900px）；条挂在卡片内时需要允许换行，宽 100% 的条才能独占一行落到\n   卡片底部，而不是被挤进横向一排。只改横向列表里的卡片，网格卡片（纵向 flex）不受影响 */\n.server-inline-list .cursor-pointer { flex-wrap: wrap; }\n/* 服务器表 */\n.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }\n.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }\n.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }\n.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }\n.nl-table tr:last-child td { border-bottom: none; }\n.nl-table tbody tr { cursor: pointer; }\n.nl-table tbody tr:hover { background: var(--nl-bg); }\n.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }\n.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }\n.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }\n.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }\n.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }\n.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }\n.nl-num { font-variant-numeric: tabular-nums; }\n/* 探针按钮与图表 */\n.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }\n.nl-probe {\n  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;\n  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;\n}\n.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }\n.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }\n#nl-chart { width: 100%; height: 360px; margin-top: 8px; }\n.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }\n.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }\n.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }\n.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }\n.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }\n/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */\n.nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }\n/* 首页卡片条：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，\n   下面左右两条分段柱并排（左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */\n.nl-region-row { padding: 4px 0 1px; }\n.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }\n.nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }\n@media (max-width: 640px) {\n  #nl-chart { height: 300px; }\n  .nl-probe { min-width: 140px; flex: 1 1 40%; }\n}";
+  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* 延迟显示开关（#nl-fab，2026-11-21）：右侧悬浮按钮，与资产统计（$ 球）/\n   地球球同一列：45px 圆形，位置 $ 球 top:70px、地球球 top:125px，\n   本球 top:180px（55px 间距），right:20px，不挡卡片内容。\n   样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），\n   里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板\n   （开面板改点卡片条）。按钮本身不带圆点：图标颜色表示状态，\n   开启绿 #22c55e、关闭红 #ef4444（点击切换）。 */\n/* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */\nbody.nl-strips-off .nl-home-strip { display: none !important; }\n#nl-fab {\n  position: fixed; right: 20px; top: 180px;\n  width: 45px; height: 45px; border-radius: 50%;\n  background: transparent;\n  border: none;\n  box-shadow: none;\n  z-index: 1041;\n  display: flex; align-items: center; justify-content: center;\n  cursor: pointer; padding: 0;\n  color: #22c55e;\n  transition: all 0.3s ease;\n}\n#nl-fab:hover { transform: scale(1.1); }\n#nl-fab.off { color: #ef4444; }\n#nl-fab svg { display: block; }\n/* ================= 2. 面板 ================= */\n#nl-modal-overlay {\n  position: fixed; inset: 0; z-index: 2000;\n  background: rgba(0, 0, 0, 0.45);\n  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);\n  display: none; align-items: flex-start; justify-content: center;\n  overflow-y: auto; padding: 24px 12px;\n}\n#nl-modal-overlay.show { display: flex; }\n#nl-modal {\n  width: min(1060px, 96vw);\n  background: var(--nl-card); color: var(--nl-fg);\n  border: 1px solid var(--nl-border); border-radius: 16px;\n  box-shadow: 0 16px 48px var(--nl-shadow);\n  overflow: hidden;\n}\n.nl-modal-head {\n  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;\n  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);\n}\n.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }\n.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }\n.nl-modal-head .nl-spacer { flex: 1; }\n.nl-btn {\n  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);\n  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;\n}\n.nl-btn:hover { border-color: var(--nl-accent); }\n.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }\n.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }\n.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }\n.nl-body { padding: 16px 18px 20px; }\n.nl-notice {\n  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;\n  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);\n  color: var(--nl-fg); font-size: 0.83rem;\n}\n.nl-notice.show { display: block; }\n.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }\n.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }\n.nl-stat {\n  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;\n  padding: 10px 14px; background: var(--nl-bg);\n}\n.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }\n.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }\n.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }\n.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }\n.nl-section-title:first-child { margin-top: 0; }\n/* 服务卡片 */\n.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }\n.nl-svc {\n  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;\n  background: var(--nl-bg); cursor: pointer;\n}\n.nl-svc:hover { border-color: var(--nl-accent); }\n.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-svc-top { display: flex; align-items: center; gap: 8px; }\n.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }\n.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }\n.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }\n.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }\n.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排\n   尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，\n   下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */\n.nl-card-strip { margin-top: 6px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }\n/* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，\n   截图实测该行字高 22px、条行字高 25px；只改首页条，面板内服务卡片不动） */\n.nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }\n.nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }\n/* 横向列表模式：卡片是横向 flex 行（名称/分隔线/统计三项，合计约 870px，小于卡片\n   最小宽 900px）；条挂在卡片内时需要允许换行，宽 100% 的条才能独占一行落到\n   卡片底部，而不是被挤进横向一排。只改横向列表里的卡片，网格卡片（纵向 flex）不受影响 */\n.server-inline-list .cursor-pointer { flex-wrap: wrap; }\n/* 流量进度条（合并进来的第 4 个脚本块）：整行显示——作为卡片的直接子元素、\n   宽 100%，在横向卡片里换行独占一行，在纵向卡片里自然占满整行；位置在\n   延迟条之前（卡片倒数第二行），与上方内容隔开 */\n.nl-traffic-row { margin-top: 8px; }\n/* 服务器表 */\n.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }\n.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }\n.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }\n.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }\n.nl-table tr:last-child td { border-bottom: none; }\n.nl-table tbody tr { cursor: pointer; }\n.nl-table tbody tr:hover { background: var(--nl-bg); }\n.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }\n.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }\n.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }\n.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }\n.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }\n.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }\n.nl-num { font-variant-numeric: tabular-nums; }\n/* 探针按钮与图表 */\n.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }\n.nl-probe {\n  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;\n  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;\n}\n.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }\n.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }\n.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }\n#nl-chart { width: 100%; height: 360px; margin-top: 8px; }\n.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }\n.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }\n.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }\n.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }\n.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }\n/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */\n.nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }\n/* 首页卡片条：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，\n   下面左右两条分段柱并排（左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */\n.nl-region-row { padding: 4px 0 1px; }\n.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }\n.nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }\n@media (max-width: 640px) {\n  #nl-chart { height: 300px; }\n  .nl-probe { min-width: 140px; flex: 1 1 40%; }\n}";
   var HTML = "<!-- 延迟开关球见文件末尾 #nl-fab（与 $ 球、地球球同组右侧悬浮按钮） -->\n<!-- 面板 -->\n<div id=\"nl-modal-overlay\">\n  <div id=\"nl-modal\" role=\"dialog\" aria-label=\"延迟 / 丢包\">\n    <div class=\"nl-modal-head\">\n      <h2>延迟 / 丢包</h2><span class=\"nl-sub\" id=\"nl-modal-sub\">Nezha v2 · 探针监控</span>\n      <span class=\"nl-spacer\"></span>\n      <span id=\"nl-range-wrap\" style=\"display:flex;gap:6px\"></span>\n      <button class=\"nl-btn\" id=\"nl-peak-btn\" type=\"button\" title=\"把延迟高于 P95 的尖峰截断到 P95，让曲线更易读\">Peak cut：开</button>\n      <button class=\"nl-btn\" id=\"nl-refresh-btn\" type=\"button\">刷新</button>\n      <button class=\"nl-btn nl-close\" id=\"nl-close-btn\" type=\"button\" aria-label=\"关闭\">×</button>\n    </div>\n    <div class=\"nl-body\">\n      <div class=\"nl-notice\" id=\"nl-notice\"></div>\n      <div class=\"nl-stats\" id=\"nl-stats\"></div>\n      <div class=\"nl-section-title\">服务总览 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（来自 GET /api/v1/service，30 天日粒度）</span></div>\n      <div class=\"nl-svc-grid\" id=\"nl-services\"><div class=\"nl-empty\">正在加载服务数据…</div></div>\n      <div class=\"nl-section-title\">服务器 <span style=\"font-weight:400;color:var(--nl-muted);font-size:.78rem\">（当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率）</span></div>\n      <div class=\"nl-table-wrap\"><table class=\"nl-table\">\n        <thead><tr><th>服务器</th><th>状态</th><th>当前延迟</th><th>平均延迟 24h</th><th>丢包 24h</th><th>探针</th></tr></thead>\n        <tbody id=\"nl-servers\"><tr><td colspan=\"6\" class=\"nl-empty\">正在加载服务器数据…</td></tr></tbody>\n      </table></div>\n      <div id=\"nl-detail\" style=\"display:none\">\n        <div class=\"nl-section-title\" id=\"nl-detail-title\">详情</div>\n        <div class=\"nl-probes\" id=\"nl-probes\"></div>\n        <div id=\"nl-chart\"></div>\n        <div id=\"nl-chart-fallback\"></div>\n        <div class=\"nl-hint\" id=\"nl-detail-hint\"></div>\n      </div>\n      <div class=\"nl-hint\">\n        数据来源：Nezha v2 服务探针（HTTP / ICMP / TCP）。延迟为探针实测往返毫秒数；\n        丢包率由探针成功/失败计数推导，Nezha v2 不直接存储丢包字段。\n        时间范围：1h（实时，最近 60 分钟，每 30 秒刷新）/ 24h / 7d / 30d——\n        1h 是虚拟档，接口仍请求 period=1d 再在前端截取最近 1 小时，因为 v2 API\n        的 period 只接受 1d / 7d / 30d，1h 会直接报错。游客可查看 1h 和 24h，\n        7d / 30d 需要登录。\n      </div>\n    </div>\n  </div>\n</div>\n\n<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐，不开详情面板；图标绿=开、红=关-->\n<button id=\"nl-fab\" type=\"button\" title=\"延迟显示：开，点击关闭\" aria-label=\"延迟显示开关\" aria-pressed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m12 14 4-4\"/><path d=\"M3.34 19a10 10 0 1 1 17.32 0\"/></svg></button>";
   function inject() {
     if (!document.getElementById('nezha-latency-style')) {
@@ -960,6 +960,528 @@ var NezhaLatencyConfig = Object.assign({
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', boot);
   else boot();
+})();
+// ================= 4. 流量进度条（合并自流量项目） =================
+// 来源：gugetang/NeZha-UI-ShowTraffic traffic-progress.js v20260803，
+// 合并时与上游 ziwiwiz/nezha-ui@main 同一文件一字不差；只改了两处：
+// (1) 挂载位置：不再插到统计区后面（会挤进统计列），而是作为卡片的直接子
+//     元素、宽 100%、插在延迟条之前，整行显示；
+// (2) 元素多一个 nl-traffic-row class（样式见本文件 <style>，与上方内容隔开）。
+// 配置沿用站上已有的 window.TrafficScriptConfig（showTrafficStats /
+// interval / toggleInterval / duration / apiUrl / enableLog），删掉单独的
+// traffic-progress.js 引用行即可，配置块本身不用动。
+(() => {
+  'use strict';
+
+  const VERSION = 'v20260803';
+  const INSTANCE_KEY = '__nezhaTrafficProgress';
+
+  // Avoid duplicate timers/observers when the script is injected more than once.
+  const previous = window[INSTANCE_KEY];
+  if (previous?.version === VERSION) return;
+  if (typeof previous?.destroy === 'function') previous.destroy();
+
+  const DEFAULT_CONFIG = {
+    showTrafficStats: true,
+    insertAfter: true, // 合并版不再使用：流量行一律整行挂在卡片内（见 renderTrafficStats），保留该键只为兼容旧配置
+    interval: 60000,
+    toggleInterval: 5000,
+    duration: 500,
+    apiUrl: '/api/v1/service',
+    enableLog: false
+  };
+
+  const TARGET_SELECTOR = 'section.server-card-list, section.server-inline-list';
+  const CARD_TITLE_SELECTOR = 'section.grid.items-center.gap-2';
+  const INJECTED_CLASS = 'new-inserted-element';
+  const STYLE_ID = 'nezha-traffic-progress-style';
+
+  let config = readConfig();
+  let destroyed = false;
+  let currentSection = null;
+  let sectionDetector = null;
+  let childObserver = null;
+  let trafficTimer = null;
+  let toggleTimer = null;
+  let updateTimer = null;
+  let detectorFrame = null;
+  let updateRunning = false;
+  let updateRequested = false;
+  let toggleIndex = 0;
+
+  // One bounded entry per currently rendered server.
+  const entries = new Map();
+
+  let trafficCache = null;
+  let inFlightRequest = null;
+
+  function readConfig() {
+    return Object.assign({}, DEFAULT_CONFIG, window.TrafficScriptConfig || {});
+  }
+
+  function log(...args) {
+    if (config.enableLog) console.log(`[TrafficScript ${VERSION}]`, ...args);
+  }
+
+  function injectCustomCSS() {
+    if (document.getElementById(STYLE_ID)) return;
+    const style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = '.mt-4.w-full.mx-auto > div { display: none; }';
+    document.head.appendChild(style);
+  }
+
+  function formatFileSize(bytes) {
+    if (bytes === 0) return { value: '0', unit: 'B' };
+    const units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    let size = Number(bytes) || 0;
+    let unitIndex = 0;
+    while (size >= 1024 && unitIndex < units.length - 1) {
+      size /= 1024;
+      unitIndex += 1;
+    }
+    return {
+      value: size.toFixed(unitIndex === 0 ? 0 : 2),
+      unit: units[unitIndex]
+    };
+  }
+
+  function calculatePercentage(used, total) {
+    let normalizedUsed = Number(used);
+    let normalizedTotal = Number(total);
+    if (normalizedUsed > 1e15 || normalizedTotal > 1e15) {
+      normalizedUsed /= 1e10;
+      normalizedTotal /= 1e10;
+    }
+    return normalizedTotal === 0
+      ? '0.00'
+      : ((normalizedUsed / normalizedTotal) * 100).toFixed(2);
+  }
+
+  function formatDate(dateString) {
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('zh-CN', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    });
+  }
+
+  function getHslGradientColor(percentage) {
+    const p = Math.min(Math.max(Number(percentage), 0), 100);
+    const lerp = (start, end, value) => start + (end - start) * value;
+    let h;
+    let s;
+    let l;
+
+    if (p <= 35) {
+      const t = p / 35;
+      h = lerp(142, 32, t);
+      s = lerp(69, 85, t);
+      l = lerp(45, 55, t);
+    } else if (p <= 85) {
+      const t = (p - 35) / 50;
+      h = lerp(32, 0, t);
+      s = lerp(85, 75, t);
+      l = lerp(55, 50, t);
+    } else {
+      const t = (p - 85) / 15;
+      h = 0;
+      s = 75;
+      l = lerp(50, 45, t);
+    }
+
+    return `hsl(${h.toFixed(0)}, ${s.toFixed(0)}%, ${l.toFixed(0)}%)`;
+  }
+
+  function setTextIfChanged(parent, selector, nextValue) {
+    const element = parent.querySelector(selector);
+    if (element && element.textContent !== nextValue) element.textContent = nextValue;
+  }
+
+  function setStyleIfChanged(element, property, nextValue) {
+    if (element && element.style[property] !== nextValue) {
+      element.style[property] = nextValue;
+    }
+  }
+
+  function clearEntry(entry, removeElement = false) {
+    if (entry.fadeTimer) clearTimeout(entry.fadeTimer);
+    entry.fadeTimer = null;
+    if (removeElement && entry.el?.isConnected) entry.el.remove();
+  }
+
+  function pruneEntries(activeIds = null) {
+    for (const [id, entry] of entries) {
+      if (!entry.el?.isConnected || (activeIds && !activeIds.has(id))) {
+        clearEntry(entry, false);
+        entries.delete(id);
+      }
+    }
+  }
+
+  function buildServerElementMap() {
+    const map = new Map();
+    document.querySelectorAll(CARD_TITLE_SELECTOR).forEach((section) => {
+      const name = section.querySelector('p')?.textContent?.trim();
+      if (name && !map.has(name)) map.set(name, section);
+    });
+    return map;
+  }
+
+  function normalizeTrafficData(trafficData) {
+    const servers = new Map();
+    for (const cycleId in trafficData) {
+      const cycle = trafficData[cycleId];
+      if (!cycle?.server_name || !cycle?.transfer) continue;
+      for (const serverId in cycle.server_name) {
+        const name = cycle.server_name[serverId];
+        const transfer = cycle.transfer[serverId];
+        const nextUpdate = cycle.next_update?.[serverId];
+        if (!name || transfer === undefined || !cycle.max || !cycle.from || !cycle.to) continue;
+        servers.set(name, {
+          id: String(serverId),
+          transfer,
+          max: cycle.max,
+          from: cycle.from,
+          to: cycle.to,
+          nextUpdate
+        });
+      }
+    }
+    return servers;
+  }
+
+  function createMarkup(data) {
+    return `
+      <div class="flex items-center justify-between">
+        <div class="flex items-baseline gap-1">
+          <span class="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 used-traffic">${data.used.value}</span>
+          <span class="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 used-unit">${data.used.unit}</span>
+          <span class="text-[10px] text-neutral-500 dark:text-neutral-400">/ </span>
+          <span class="text-[10px] text-neutral-500 dark:text-neutral-400 total-traffic">${data.total.value}</span>
+          <span class="text-[10px] text-neutral-500 dark:text-neutral-400 total-unit">${data.total.unit}</span>
+        </div>
+        <div class="text-[10px] font-medium text-neutral-600 dark:text-neutral-300 time-info" style="opacity:1; transition: opacity 0.3s;">
+          ${data.contents[0]}
+        </div>
+      </div>
+      <div class="relative h-1.5">
+        <div class="absolute inset-0 bg-neutral-100 dark:bg-neutral-800 rounded-full"></div>
+        <div class="absolute inset-0 bg-emerald-500 rounded-full transition-all duration-300 progress-bar" style="width:${data.percentage}%; max-width:100%; background-color:${data.color};"></div>
+      </div>`;
+  }
+
+  function findExistingElement(container, id) {
+    return Array.from(container.querySelectorAll(`.${INJECTED_CLASS}`))
+      .find((element) => element.dataset.trafficServerId === id) || null;
+  }
+
+  function updateEntry(entry, data) {
+    const element = entry.el;
+    setTextIfChanged(element, '.used-traffic', data.used.value);
+    setTextIfChanged(element, '.used-unit', data.used.unit);
+    setTextIfChanged(element, '.total-traffic', data.total.value);
+    setTextIfChanged(element, '.total-unit', data.total.unit);
+    setTextIfChanged(element, '.from-date', data.from);
+    setTextIfChanged(element, '.to-date', data.to);
+    setTextIfChanged(element, '.percentage-value', `${data.percentage}%`);
+    setTextIfChanged(element, '.next-update', data.nextUpdate);
+
+    const progressBar = element.querySelector('.progress-bar');
+    setStyleIfChanged(progressBar, 'width', `${data.percentage}%`);
+    setStyleIfChanged(progressBar, 'backgroundColor', data.color);
+
+    // Keep rotating content current without creating another array entry.
+    entry.contents = data.contents;
+  }
+
+  function renderTrafficStats(trafficData) {
+    if (destroyed) return;
+
+    const serverElements = buildServerElementMap();
+    const servers = normalizeTrafficData(trafficData);
+    const activeIds = new Set();
+
+    for (const [serverName, serverData] of servers) {
+      const targetElement = serverElements.get(serverName.trim());
+      if (!targetElement) continue;
+
+      const container = targetElement.closest('div');
+      if (!container) continue;
+
+      const id = serverData.id;
+      activeIds.add(id);
+
+      let entry = entries.get(id);
+      if (entry && (!entry.el.isConnected || !container.contains(entry.el))) {
+        clearEntry(entry, false);
+        entries.delete(id);
+        entry = null;
+      }
+
+      const used = formatFileSize(serverData.transfer);
+      const total = formatFileSize(serverData.max);
+      const percentage = calculatePercentage(serverData.transfer, serverData.max);
+      const from = formatDate(serverData.from);
+      const to = formatDate(serverData.to);
+      const nextUpdate = serverData.nextUpdate
+        ? new Date(serverData.nextUpdate).toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+        : '';
+      const color = getHslGradientColor(percentage);
+      const contents = [
+        `<span class="from-date">${from}</span>
+                <span class="text-neutral-500 dark:text-neutral-400">-</span>
+                <span class="to-date">${to}</span>`,
+        `<span class="text-[10px] font-medium text-neutral-800 dark:text-neutral-200 percentage-value">${percentage}%</span>`,
+        `<span class="text-[10px] font-medium text-neutral-600 dark:text-neutral-300 next-update">${nextUpdate}</span>`
+      ];
+      const viewData = { used, total, percentage, from, to, nextUpdate, color, contents };
+
+      let element = entry?.el || findExistingElement(container, id);
+
+      if (!config.showTrafficStats) {
+        if (element) element.remove();
+        if (entry) clearEntry(entry, false);
+        entries.delete(id);
+        continue;
+      }
+
+      if (!element) {
+        element = document.createElement('div');
+        element.className = `space-y-1.5 ${INJECTED_CLASS} traffic-stats-for-server-${id.replace(/[^a-zA-Z0-9_-]/g, '-')} nl-traffic-row`;
+        element.dataset.trafficServerId = id;
+        element.style.width = '100%';
+        element.innerHTML = createMarkup(viewData);
+        // 整行显示（合并改动）：作为卡片的直接子元素、宽 100%，在横向卡片里
+        // 靠 .server-inline-list .cursor-pointer { flex-wrap: wrap } 换行独占
+        // 一行，在纵向卡片里自然占满整行；插在延迟条（.nl-home-strip）之前，
+        // 延迟条永远是卡片最后一个子元素，所以流量行始终在延迟条上面一行。
+        // container 是卡片本身（标题 section 的 closest('div')）。
+        // 上游的 anchor/insertAfter 逻辑不再使用（它会把流量块塞进统计列里）。
+        const strip = container.querySelector('.nl-home-strip');
+        if (strip) container.insertBefore(element, strip);
+        else container.appendChild(element);
+        entry = { el: element, contents, fadeTimer: null };
+        entries.set(id, entry);
+      } else {
+        if (!entry) {
+          entry = { el: element, contents, fadeTimer: null };
+          entries.set(id, entry);
+        }
+        updateEntry(entry, viewData);
+      }
+    }
+
+    pruneEntries(activeIds);
+    log(`rendered ${entries.size} traffic entries`);
+  }
+
+  async function getTrafficData() {
+    const now = Date.now();
+    if (trafficCache && now - trafficCache.timestamp < config.interval) {
+      return trafficCache.data;
+    }
+    if (inFlightRequest) return inFlightRequest;
+
+    inFlightRequest = fetch(config.apiUrl, { credentials: 'same-origin' })
+      .then((response) => {
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        return response.json();
+      })
+      .then((payload) => {
+        if (!payload?.success) throw new Error('Unexpected traffic API response');
+        const data = payload.data?.cycle_transfer_stats || {};
+        trafficCache = { timestamp: Date.now(), data };
+        return data;
+      })
+      .catch((error) => {
+        if (config.enableLog) console.error('[TrafficScript] request failed:', error);
+        return trafficCache?.data || null;
+      })
+      .finally(() => {
+        inFlightRequest = null;
+      });
+
+    return inFlightRequest;
+  }
+
+  async function updateTrafficStats() {
+    if (destroyed || document.hidden) return;
+    if (updateRunning) {
+      updateRequested = true;
+      return;
+    }
+
+    updateRunning = true;
+    try {
+      const trafficData = await getTrafficData();
+      if (trafficData && !destroyed && !document.hidden) renderTrafficStats(trafficData);
+    } finally {
+      updateRunning = false;
+      if (updateRequested) {
+        updateRequested = false;
+        scheduleUpdate(50);
+      }
+    }
+  }
+
+  function scheduleUpdate(delay = 80) {
+    if (destroyed || document.hidden) return;
+    if (updateTimer) clearTimeout(updateTimer);
+    updateTimer = setTimeout(() => {
+      updateTimer = null;
+      updateTrafficStats();
+    }, delay);
+  }
+
+  function rotateEntries() {
+    if (destroyed || document.hidden || entries.size === 0) return;
+    toggleIndex += 1;
+    const index = toggleIndex % 3;
+
+    pruneEntries();
+    for (const entry of entries.values()) {
+      const element = entry.el.querySelector('.time-info');
+      const content = entry.contents[index];
+      if (!element || !content) continue;
+
+      if (entry.fadeTimer) clearTimeout(entry.fadeTimer);
+      const halfDuration = Math.max(0, config.duration / 2);
+      setStyleIfChanged(element, 'transition', `opacity ${halfDuration}ms`);
+      setStyleIfChanged(element, 'opacity', '0');
+      entry.fadeTimer = setTimeout(() => {
+        entry.fadeTimer = null;
+        if (!element.isConnected || destroyed) return;
+        if (element.innerHTML !== content) element.innerHTML = content;
+        setStyleIfChanged(element, 'opacity', '1');
+      }, halfDuration);
+    }
+  }
+
+  function stopTimers() {
+    if (trafficTimer) clearInterval(trafficTimer);
+    if (toggleTimer) clearInterval(toggleTimer);
+    trafficTimer = null;
+    toggleTimer = null;
+  }
+
+  function startTimers() {
+    stopTimers();
+    if (destroyed || document.hidden) return;
+    if (config.interval > 0) {
+      trafficTimer = setInterval(updateTrafficStats, config.interval);
+    }
+    if (config.toggleInterval > 0) {
+      toggleTimer = setInterval(rotateEntries, config.toggleInterval);
+    }
+  }
+
+  function observeSection(section) {
+    if (section === currentSection && childObserver) return;
+    if (childObserver) childObserver.disconnect();
+    currentSection = section;
+    childObserver = new MutationObserver(() => scheduleUpdate());
+    childObserver.observe(section, { childList: true, subtree: false });
+    scheduleUpdate(0);
+  }
+
+  function detectSection() {
+    detectorFrame = null;
+    if (destroyed) return;
+    const section = document.querySelector(TARGET_SELECTOR);
+    if (section && section !== currentSection) observeSection(section);
+  }
+
+  function scheduleSectionDetection() {
+    if (detectorFrame !== null || destroyed) return;
+    detectorFrame = requestAnimationFrame(detectSection);
+  }
+
+  function mutationMayAffectSection(mutations) {
+    if (!currentSection?.isConnected) return true;
+    for (const mutation of mutations) {
+      // The child observer owns changes inside the active list.
+      if (currentSection.contains(mutation.target)) continue;
+      for (const node of [...mutation.addedNodes, ...mutation.removedNodes]) {
+        if (node.nodeType !== Node.ELEMENT_NODE) continue;
+        if (node.matches?.(TARGET_SELECTOR) || node.querySelector?.(TARGET_SELECTOR)) return true;
+      }
+    }
+    return false;
+  }
+
+  function startObservers() {
+    const root = document.querySelector('main') || document.body;
+    sectionDetector = new MutationObserver((mutations) => {
+      if (mutationMayAffectSection(mutations)) scheduleSectionDetection();
+    });
+    sectionDetector.observe(root, { childList: true, subtree: true });
+    detectSection();
+  }
+
+  function handleVisibilityChange() {
+    if (document.hidden) {
+      stopTimers();
+      if (updateTimer) clearTimeout(updateTimer);
+      updateTimer = null;
+      for (const entry of entries.values()) {
+        if (entry.fadeTimer) clearTimeout(entry.fadeTimer);
+        entry.fadeTimer = null;
+      }
+      return;
+    }
+
+    startTimers();
+    scheduleSectionDetection();
+    scheduleUpdate(0);
+  }
+
+  function destroy() {
+    if (destroyed) return;
+    destroyed = true;
+    stopTimers();
+    if (updateTimer) clearTimeout(updateTimer);
+    if (detectorFrame !== null) cancelAnimationFrame(detectorFrame);
+    if (sectionDetector) sectionDetector.disconnect();
+    if (childObserver) childObserver.disconnect();
+    for (const entry of entries.values()) clearEntry(entry, false);
+    entries.clear();
+    document.removeEventListener('visibilitychange', handleVisibilityChange);
+    window.removeEventListener('beforeunload', destroy);
+  }
+
+  injectCustomCSS();
+  startObservers();
+  startTimers();
+  scheduleUpdate(0);
+
+  document.addEventListener('visibilitychange', handleVisibilityChange, { passive: true });
+  window.addEventListener('beforeunload', destroy, { once: true });
+
+  // Preserve support for configuration assigned shortly after script parsing.
+  setTimeout(() => {
+    if (destroyed) return;
+    const nextConfig = readConfig();
+    if (JSON.stringify(nextConfig) === JSON.stringify(config)) return;
+    config = nextConfig;
+    startTimers();
+    scheduleUpdate(0);
+  }, 100);
+
+  window[INSTANCE_KEY] = {
+    version: VERSION,
+    destroy,
+    refresh() {
+      trafficCache = null;
+      scheduleUpdate(0);
+    },
+    getEntryCount() {
+      pruneEntries();
+      return entries.size;
+    }
+  };
 })();
   }
   if (document.readyState === 'loading') {
