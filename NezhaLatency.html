@@ -93,7 +93,8 @@ html.dark {
    本球 top:180px（55px 间距），right:20px，不挡卡片内容。
    样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），
    里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板
-   （开面板改点卡片条）。右上角带状态圆点：开启绿 #22c55e、关闭红 #ef4444。 */
+   （开面板改点卡片条）。按钮中心带状态圆点：开启绿 #22c55e、关闭红 #ef4444，
+   大小照概览卡“在线服务器”那个绿点（h-2 w-2，8px）。 */
 /* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */
 body.nl-strips-off .nl-home-strip { display: none !important; }
 #nl-fab {
@@ -111,8 +112,8 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 #nl-fab:hover { transform: scale(1.1); }
 #nl-fab svg { display: block; }
 #nl-fab .nl-dot {
-  position: absolute; top: 1px; right: 1px;
-  width: 12px; height: 12px; border-radius: 50%;
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 8px; height: 8px; border-radius: 50%;
   background: #22c55e;
   border: none;
   box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
