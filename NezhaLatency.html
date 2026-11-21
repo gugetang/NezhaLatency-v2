@@ -199,6 +199,10 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-bar-val { white-space: nowrap; font-size: 0.75rem; color: var(--nl-muted); font-variant-numeric: tabular-nums; }
 .nl-bar-val b { color: var(--nl-fg); font-variant-numeric: tabular-nums; }
 .nl-home-strip .nl-bar-val, .nl-home-strip .nl-bar-val b { font-size: 0.625rem; }
+/* 横向列表模式：卡片是横向 flex 行（名称/分隔线/统计三项，合计约 870px，小于卡片
+   最小宽 900px）；条挂在卡片内时需要允许换行，宽 100% 的条才能独占一行落到
+   卡片底部，而不是被挤进横向一排。只改横向列表里的卡片，网格卡片（纵向 flex）不受影响 */
+.server-inline-list .cursor-pointer { flex-wrap: wrap; }
 /* 服务器表 */
 .nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
 .nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
@@ -1064,8 +1068,10 @@ var NezhaLatencyConfig = Object.assign({
   }
   // 首页卡片定位：见本节文件头注释。返回 [{wrap, cardEl, mount, sid}]。
   // wrap = 列表容器的直接子元素；cardEl = 真正的卡片（class 含 cursor-pointer）；
-  // mount = 条要挂的父元素（网格模式就是卡片本身；横向模式卡片是横向 flex，
-  // 条挂在外层 <section> 包裹层里，落在卡片下方，不挤坏横向布局）。
+  // mount = 条要挂的父元素：两种模式都直接挂在卡片（cardEl）内、作为卡片最后
+  // 一个子元素。横向模式的卡片是横向 flex 行，靠样式 .server-inline-list
+  // .cursor-pointer { flex-wrap: wrap } 让宽 100% 的条换行独占一行落到底部，
+  // 不挤坏横向布局；条绝不挂在卡片外的包裹层上（否则电脑端看起来像单独一张卡）。
   function findHomeCards() {
     var cards = [], seen = [];
     var byName = {};
@@ -1093,7 +1099,7 @@ var NezhaLatencyConfig = Object.assign({
     function addCard(wrap, cardEl, sid) {
       if (!cardEl || seen.indexOf(cardEl) >= 0) return;
       seen.push(cardEl);
-      cards.push({ wrap: wrap, cardEl: cardEl, mount: (cardEl !== wrap) ? wrap : cardEl, sid: sid });
+      cards.push({ wrap: wrap, cardEl: cardEl, mount: cardEl, sid: sid });
     }
     document.querySelectorAll('.server-card-list, .server-inline-list').forEach(function (list) {
       Array.prototype.forEach.call(list.children, function (wrap) {
@@ -1134,7 +1140,7 @@ var NezhaLatencyConfig = Object.assign({
         var online = isOnline(srv, nowMs);
         var key = stripKey(c.sid, h, online);
         var strip = null;
-        var hosts = [c.mount, c.cardEl]; // 条可能残留在另一处（布局模式切换后），两处都找
+        var hosts = [c.mount, c.cardEl, c.wrap]; // 条可能残留在另一处（旧版横向模式挂在外层 section 上、布局模式切换后），三处都找，找到就挪进卡片
         for (var hi = 0; hi < hosts.length && !strip; hi++) {
           var host = hosts[hi];
           if (!host) continue;
