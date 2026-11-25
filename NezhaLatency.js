@@ -9,8 +9,8 @@
   // Avoid double injection when custom_code is re-applied in the same page.
   if (document.getElementById('nezha-latency-style')) return;
   var VERSION = 'NezhaLatency-v2';
-  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* 延迟显示开关（#nl-fab，2026-11-21）：右侧悬浮按钮，与资产统计（$ 球）/\n   地球球同一列：45px 圆形，位置 $ 球 top:70px、地球球 top:125px，\n   本球 top:180px（55px 间距），right:20px，不挡卡片内容。\n   样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），\n   里面是 24px 描边图标。行为是开关卡片条的显隐。按钮本身不带圆点：图标颜色表示状态，\n   开启绿 #22c55e、关闭红 #ef4444（点击切换）。 */\n/* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */\nbody.nl-strips-off .nl-home-strip { display: none !important; }\n#nl-fab {\n  position: fixed; right: 20px; top: 180px;\n  width: 45px; height: 45px; border-radius: 50%;\n  background: transparent;\n  border: none;\n  box-shadow: none;\n  z-index: 1041;\n  display: flex; align-items: center; justify-content: center;\n  cursor: pointer; padding: 0;\n  color: #22c55e;\n  transition: all 0.3s ease;\n}\n#nl-fab:hover { transform: scale(1.1); }\n#nl-fab.off { color: #ef4444; }\n#nl-fab svg { display: block; }\n\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排\n   尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，\n   下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */\n.nl-card-strip { margin-top: 6px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }\n/* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，\n   截图实测该行字高 22px、条行字高 25px；只改首页条） */\n.nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }\n.nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }\n/* 横向列表模式：卡片是横向 flex 行（名称/分隔线/统计三项，合计约 870px，小于卡片\n   最小宽 900px）；条挂在卡片内时需要允许换行，宽 100% 的条才能独占一行落到\n   卡片底部，而不是被挤进横向一排。只改横向列表里的卡片，网格卡片（纵向 flex）不受影响 */\n.server-inline-list .cursor-pointer { flex-wrap: wrap; }\n/* 流量进度条（合并进来的第 4 个脚本块）：整行显示——作为卡片的直接子元素、\n   宽 100%，在横向卡片里换行独占一行，在纵向卡片里自然占满整行；位置在\n   延迟条之前（卡片倒数第二行），与上方内容隔开 */\n.nl-traffic-row { margin-top: 8px; }\n\n/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */\n.nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }\n/* 首页卡片条：每地区一行，第一行分左右两半，与下方分段柱左右对齐：左半为地区名 +\n   延迟值（延迟值右对齐到延迟柱右端），右半为丢包率（右对齐到丢包柱右端）；\n   下面左右两条分段柱并排（左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */\n/* 第一行两半与下方两条柱等宽（flex:1，间距同为 8px），使延迟值、丢包率各自对齐到对应柱体的右端 */\n.nl-region-head { gap: 8px; }\n.nl-region-head-half { flex: 1; display: flex; align-items: baseline; }\n.nl-region-head-half:first-child { justify-content: space-between; }\n.nl-region-head-half.nl-region-head-right { justify-content: flex-end; }\n.nl-region-row { padding: 4px 0 1px; }\n.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }\n.nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }";
-  var HTML = "<!-- 延迟开关球见文件末尾 #nl-fab（与 $ 球、地球球同组右侧悬浮按钮） -->\n<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐；图标绿=开、红=关-->\n<button id=\"nl-fab\" type=\"button\" title=\"延迟显示：开，点击关闭\" aria-label=\"延迟显示开关\" aria-pressed=\"true\"><svg xmlns=\"http://www.w3.org/2000/svg\" width=\"24\" height=\"24\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"m12 14 4-4\"/><path d=\"M3.34 19a10 10 0 1 1 17.32 0\"/></svg></button>";
+  var CSS = "/* ================= 1. Nezha v2 主题变量适配 =================\n   Nezha v2 官方用户前端（nezha-dash-v2 v2.7.0）是 Tailwind v4 + shadcn 风格：\n   :root / html.dark 上定义的是 HSL 三元组变量（--background / --foreground /\n   --card / --primary / --muted-foreground / --border / --destructive /\n   --chart-1..--chart-10），主题由 <html> 的 .dark / .light class +\n   localStorage \"vite-ui-theme\" 控制。这里把它们映射成 --nl-* 变量，并给出去掉\n   Nezha 环境也能用的回退值。 */\n:root {\n  --nl-bg: hsl(var(--background, 0 0% 98%));\n  --nl-card: hsl(var(--card, 0 0% 100%));\n  --nl-fg: hsl(var(--foreground, 20 14.3% 4.1%));\n  --nl-muted: hsl(var(--muted-foreground, 25 5.3% 44.7%));\n  --nl-border: hsl(var(--border, 20 5.9% 90%));\n  --nl-accent: hsl(var(--primary, 24 9.8% 10%));\n  --nl-accent-fg: hsl(var(--primary-foreground, 60 9.1% 97.8%));\n  --nl-danger: hsl(var(--destructive, 0 84.2% 60.2%));\n  --nl-shadow: rgba(0, 0, 0, 0.12);\n  --nl-green: #22c55e;\n  --nl-amber: #f59e0b;\n  --nl-red: #ef4444;\n  --nl-grey: #9ca3af;\n  --nl-accent-solid: #3b82f6;\n}\nhtml.dark {\n  --nl-bg: hsl(var(--background, 30 15% 8%));\n  --nl-card: hsl(var(--card, 20 14.3% 4.1%));\n  --nl-fg: hsl(var(--foreground, 60 9.1% 97.8%));\n  --nl-shadow: rgba(0, 0, 0, 0.45);\n}\n/* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */\nbody.nl-strips-off .nl-home-strip { display: none !important; }\n/* 延迟开关状态（工具栏柱状图按钮 B，2026-11-25）：右上角悬浮球已删，开关改由\n   官方工具栏第 2 个图标按钮承担。开时 .nl-b-on 高亮（绿描边），关时 .nl-b-off\n   变暗；只改描边与透明度，不动按钮原有尺寸、布局与图标。 */\n.nl-b-on { outline: 2px solid #22c55e !important; outline-offset: 1px; opacity: 1 !important; }\n.nl-b-off { opacity: 0.45 !important; }\n\n/* 分段历史条（Komari 风格：30 段，绿/黄/红） */\n.nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }\n.nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }\n.nl-bars i.g { background: var(--nl-green); }\n.nl-bars i.a { background: var(--nl-amber); }\n.nl-bars i.r { background: var(--nl-red); }\n/* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排\n   尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，\n   下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */\n.nl-card-strip { margin-top: 6px; }\n.nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }\n.nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }\n/* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，\n   截图实测该行字高 22px、条行字高 25px；只改首页条） */\n.nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }\n.nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }\n.nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }\n/* 横向列表模式：卡片是横向 flex 行（名称/分隔线/统计三项，合计约 870px，小于卡片\n   最小宽 900px）；条挂在卡片内时需要允许换行，宽 100% 的条才能独占一行落到\n   卡片底部，而不是被挤进横向一排。只改横向列表里的卡片，网格卡片（纵向 flex）不受影响 */\n.server-inline-list .cursor-pointer { flex-wrap: wrap; }\n/* 流量进度条（合并进来的第 4 个脚本块）：整行显示——作为卡片的直接子元素、\n   宽 100%，在横向卡片里换行独占一行，在纵向卡片里自然占满整行；位置在\n   延迟条之前（卡片倒数第二行），与上方内容隔开 */\n.nl-traffic-row { margin-top: 8px; }\n\n/* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */\n.nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }\n/* 首页卡片条：每地区一行，第一行分左右两半，与下方分段柱左右对齐：左半为地区名 +\n   延迟值（延迟值右对齐到延迟柱右端），右半为丢包率（右对齐到丢包柱右端）；\n   下面左右两条分段柱并排（左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */\n/* 第一行两半与下方两条柱等宽（flex:1，间距同为 8px），使延迟值、丢包率各自对齐到对应柱体的右端 */\n.nl-region-head { gap: 8px; }\n.nl-region-head-half { flex: 1; display: flex; align-items: baseline; }\n.nl-region-head-half:first-child { justify-content: space-between; }\n.nl-region-head-half.nl-region-head-right { justify-content: flex-end; }\n.nl-region-row { padding: 4px 0 1px; }\n.nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }\n.nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }";
+  var HTML = "<!--延迟显示开关：工具栏柱状图按钮（B），由主脚本接管；右上角悬浮球已删（2026-11-25）-->";
   function inject() {
     if (!document.getElementById('nezha-latency-style')) {
       var st = document.createElement('style');
@@ -37,9 +37,9 @@ var NezhaLatencyConfig = Object.assign({
     lossGreen: 1,              // 丢包 <1% 绿色；正常率 >=99% 绿色，>=95% 黄色，否则红色
     lossAmber: 5
   },
-  // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
-  // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
-  // localStorage 'nl-strips-enabled'，刷新后保持。按钮只开关卡片条显隐。
+  // 延迟显示开关（2026-11-25 改为工具栏柱状图按钮 B）：默认开启，点一下
+  // 关闭（卡片条全部隐藏），再点恢复；状态存 localStorage
+  // 'nl-strips-enabled'，刷新后保持。按钮只开关卡片条显隐。
   attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段），截图样式，条只作展示不可点；失败不影响页面）
   wsStaleSec: 90               // WS 的 last_active 超过这么多秒未更新，视为离线
 }, (window.NezhaLatencyConfig || {}));
@@ -91,7 +91,7 @@ var NezhaLatencyConfig = Object.assign({
         return j && ('data' in j) ? j.data : j;
       });
   }
-  // ---- 延迟显示开关（#nl-fab，2026-11-21）：开关卡片条显隐 ----
+  // ---- 延迟显示开关（工具栏柱状图按钮 B，2026-11-25）：开关卡片条显隐 ----
   // 状态存 localStorage 'nl-strips-enabled'，'1' = 开（默认），'0' = 关；
   // 读不到或异常时默认开启。显隐用 body 上的 .nl-strips-off class + CSS 控制，
   // 开关关闭期间新注入的条也会自动隐藏。
@@ -101,7 +101,7 @@ var NezhaLatencyConfig = Object.assign({
   }
   var state = {
     member: null,              // null=未知，true=已登录，false=游客
-    stripsEnabled: readStripsEnabled(), // 延迟卡片条开关：true=显示（绿点），false=隐藏（红点）
+    stripsEnabled: readStripsEnabled(), // 延迟卡片条开关：true=显示，false=隐藏
     servers: [],               // WS 来的服务器
     services: [],              // [{id, name, type, ...}]，来自 /api/v1/service
     regionGroups: [],          // 地区列表：按 service_name 前缀动态分组（见 loadServices），后台增删服务时跟着变
@@ -428,6 +428,7 @@ var NezhaLatencyConfig = Object.assign({
     return parts.join('|');
   }
   function attachCardStrips() {
+    wireB(); // React 重建 DOM 后重新接管 B（无 B 或条件不符时静默跳过）
     if (!CFG.attachCards || !state.servers.length || !state.regionGroups.length) return;
     try {
       var nowMs = Date.now();
@@ -478,23 +479,77 @@ var NezhaLatencyConfig = Object.assign({
     });
     cardObserver.observe(root, { childList: true, subtree: true });
   }
-  // 把开关状态同时写到三处：body class（控制条显隐）、按钮颜色/title、localStorage
+  // ---- 延迟开关接管工具栏柱状图按钮 B（2026-11-25，悬浮球已删） ----
+  // B 是官方页面的按钮：概览卡片下方、服务器卡片列表上方的工具栏行里，
+  // “全部”标签之前连续出现的 3 个无名图标按钮（无可访问名称、无文本、
+  // 仅含一个 SVG）中的第 2 个（柱状图，蓝色方块内 4 根升高的竖条）。
+  // B 没有 id、class、文本、aria、title，所以只用“全部锚点 + 往前数连续
+  // 无名图标按钮”定位。React 每次渲染重建 DOM，所以每次现找、不缓存节点；
+  // 定位条件不满足（没找到 3 个按钮或没有“全部”标签）就什么都不做、不报错。
+  // B 原来的功能是展开/收起 6 张延迟柱状图；接管后点击只开关卡片条。
+  function isIconOnlyButton(el) {
+    if (!el || el.tagName !== 'BUTTON') return false;
+    if ((el.textContent || '').trim() !== '') return false;
+    if (el.getAttribute('aria-label') || el.getAttribute('title')) return false;
+    return el.querySelectorAll('svg').length === 1;
+  }
+  function findB() {
+    var scope = document.querySelector('main') || document.body;
+    var btns = scope.querySelectorAll('button');
+    // 已接管过的 B：它被我们写了 title（见 syncBState），按“无名”定义已不
+    // 再算无名图标按钮，所以先按 data-nl-wired 标记找回；React 重建后旧节点
+    // 已不在 DOM，不会误命中。
+    for (var i = 0; i < btns.length; i++) {
+      if (btns[i].getAttribute('data-nl-wired')) return btns[i];
+    }
+    var allIdx = -1;
+    for (var i = 0; i < btns.length; i++) {
+      if ((btns[i].textContent || '').trim() === '全部') { allIdx = i; break; }
+    }
+    if (allIdx < 0) return null;
+    // 从“全部”往前数连续的无名图标按钮；取离“全部”最近 3 个中的第 2 个
+    var run = [];
+    for (var j = allIdx - 1; j >= 0; j--) {
+      if (!isIconOnlyButton(btns[j])) break;
+      run.unshift(btns[j]);
+    }
+    if (run.length < 3) return null;
+    return run[run.length - 2];
+  }
+  // 给 B 同步开关外观：开时高亮（绿描边）、关时变暗，title 提示当前状态。
+  // B 重建后是新节点（无 class、无 title），由 wireB 在接管时再同步一次。
+  function syncBState(b) {
+    if (!b) return;
+    var on = !!state.stripsEnabled;
+    b.classList.toggle('nl-b-on', on);
+    b.classList.toggle('nl-b-off', !on);
+    b.title = on ? '延迟显示：开，点击关闭' : '延迟显示：关，点击开启';
+  }
+  function wireB() {
+    var b = findB();
+    if (!b) return;
+    if (b.getAttribute('data-nl-wired')) return; // 已接管；React 重建后是新节点，无标记，会重新挂
+    b.setAttribute('data-nl-wired', '1');
+    b.addEventListener('click', function (e) {
+      toggleStrips();
+      // 捕获阶段先于 React 根容器的冒泡委托处理：拦住事件，不让它冒泡到
+      // React 根，B 原来的展开/收起 6 张图就不再触发。
+      e.stopPropagation();
+      e.preventDefault();
+    }, true);
+    syncBState(b);
+  }
+  // 把开关状态同时写到三处：body class（控制条显隐）、B 按钮外观/title、localStorage
   function applyStripsEnabled() {
     var on = !!state.stripsEnabled;
     document.body.classList.toggle('nl-strips-off', !on);
-    var fab = $('nl-fab');
-    if (fab) {
-      fab.classList.toggle('off', !on);
-      fab.title = on ? '延迟显示：开，点击关闭' : '延迟显示：关，点击开启';
-      fab.setAttribute('aria-pressed', on ? 'true' : 'false');
-    }
+    syncBState(findB());
     try { localStorage.setItem(STRIPS_KEY, on ? '1' : '0'); } catch (e) {}
   }
   function toggleStrips() { state.stripsEnabled = !state.stripsEnabled; applyStripsEnabled(); }
   // ---- 初始化 ----
   function init() {
-    var fab = $('nl-fab');
-    if (fab) fab.addEventListener('click', function () { toggleStrips(); });
+    wireB(); // 接管工具栏柱状图按钮 B 为延迟开关（悬浮球已删）
     applyStripsEnabled();
     window.addEventListener('resize', function () { scheduleAttach(); }); // 窗口缩放过手机/电脑分界时重算柱体段数
     if (CFG.refreshSec > 0) {
