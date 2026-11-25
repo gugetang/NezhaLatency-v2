@@ -233,8 +233,14 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }
 /* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */
 .nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
-/* 首页卡片条：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，
+/* 首页卡片条：每地区一行，第一行分左右两半，与下方分段柱左右对齐：左半为地区名 +
+   延迟值（延迟值右对齐到延迟柱右端），右半为丢包率（右对齐到丢包柱右端）；
    下面左右两条分段柱并排（左延迟、右丢包；柱体手机 12 段、电脑 24 段）。条本身是卡片内最底部元素，只作展示，不可点。 */
+/* 第一行两半与下方两条柱等宽（flex:1，间距同为 8px），使延迟值、丢包率各自对齐到对应柱体的右端 */
+.nl-region-head { gap: 8px; }
+.nl-region-head-half { flex: 1; display: flex; align-items: baseline; }
+.nl-region-head-half:first-child { justify-content: space-between; }
+.nl-region-head-half.nl-region-head-right { justify-content: flex-end; }
 .nl-region-row { padding: 4px 0 1px; }
 .nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
@@ -1003,7 +1009,7 @@ var NezhaLatencyConfig = Object.assign({
   function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
   // ---- 首页服务器卡片延迟条：地区实时值（尽力而为） ----
   // 每张卡内最底部按地区各一行（行数 = 后端服务分组数，动态变），每行都是截图
-  // 样式：第一行“地区 · 延迟 xxx ms　丢包率 x.x%”，下面左右两条 12 段分段柱
+  // 样式：第一行分左右两半（左半：地区名 + 延迟值，右半：丢包率），下面左右两条 12 段分段柱
   // 并排（左延迟、右丢包）。取数口径（见 loadServerLatency）：每组取组内各服务
   // history 里最近一个有效数据点做当前延迟（status=1 且 delay>0，超过 10 分钟
   // 视为过期显示 --），丢包 = 最近 1 小时内该组点的 down/(up+down)；分段柱 =
@@ -1035,7 +1041,7 @@ var NezhaLatencyConfig = Object.assign({
     function avg(a, b) { if (a == null) return b; if (b == null) return a; return (a + b) / 2; }
     return { delay: avg(b1.delay, b2.delay), loss: avg(b1.loss, b2.loss) };
   }
-  // 截图样式：每地区一行，第一行左地区名、右“延迟 xxx ms · 丢包率 x.x%”，下面左右
+  // 截图样式：每地区一行，第一行分左右两半（左半地区名 + 延迟值、右半丢包率，各自对齐到下方对应柱体的右端），下面左右
   // 两条分段柱并排（左延迟、右丢包）；桶内无数据时该段为灰色，不编数值
   function stripRegionRowHTML(prefix, g, online) {
     var d = online ? (g && g.delay) : null;
@@ -1050,7 +1056,7 @@ var NezhaLatencyConfig = Object.assign({
     }
     var dTxt = (d == null || isNaN(d)) ? '--' : Math.round(d) + ' ms';
     return '<div class="nl-region-row">' +
-      '<div class="nl-card-strip-head"><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span><span>延迟 <b>' + dTxt + '</b> · 丢包率 <b>' + fmtPct(l) + '</b></span></div>' +
+      '<div class="nl-card-strip-head nl-region-head"><span class="nl-region-head-half"><span class="nl-region-tag">' + esc(regionLabel(prefix)) + '</span><span>延迟 <b>' + dTxt + '</b></span></span><span class="nl-region-head-half nl-region-head-right"><span>丢包率 <b>' + fmtPct(l) + '</b></span></span></div>' +
       '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
       '</div>';
   }
