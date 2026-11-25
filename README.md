@@ -14,12 +14,10 @@ jsdelivr 上的 `NezhaLatency.js`。
 | # | 功能 | 说明 |
 |---|---|---|
 | 1 | 首页卡片延迟条 | 每张服务器卡片底部，按后端服务前缀动态分组，每组一行。第一行分左右两半：左半是地区名 + 延迟值（延迟值右对齐到延迟柱右端），右半是丢包率（右对齐到丢包柱右端）；下面左右两条分段柱并排（左延迟、右丢包）。行名取后端服务的实际 service_name（如 SCCM-v4，不写死名字）。分段柱是最近 24 小时的历史：电脑 24 段（每段 1 小时），手机 12 段（相邻两小时合并成一段）。颜色：延迟绿 <200ms、黄 <300ms、红 ≥300ms；丢包绿 <1%、黄 <5%、红 ≥5%。实时延迟取组内最近一个有效数据点，丢包取最近 1 小时；桶内无有效数据时该段为灰色，不编数值。条只作展示、不可点（点条会落到卡片本身，进官方服务器详情页）。卡片是 React 渲染、DOM 会重建，用 5 秒轮询 + MutationObserver 补挂，条始终在卡片最底部。 |
-| 2 | 延迟 / 丢包面板 | 通过 `window.NezhaLatency.open()` 打开（调试 API，见“配置”）。面板内：顶部统计（服务探针数、服务器数、平均延迟 30 天均值、最高延迟、最高丢包）；服务总览卡片（每服务：名称、类型、正常率、平均延迟、丢包、成功/失败次数 + 最近 10 天两条 10 段分段柱，左延迟右丢包），点服务卡片打开该探针的详情；服务器表（服务器、状态、当前延迟、平均延迟 24h、丢包 24h、探针），点行打开该服务器的详情。当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率。 |
-| 3 | 详情 / Network 视图 | 详情内每探针一个按钮，显示最近延迟、最低/最高延迟、平均延迟、平均丢包；双轴图（左延迟 ms / 右丢包 %，ECharts 5），时间范围 **1h（实时，默认）** / 24h / 7d / 30d，Peak cut 开关（默认开，按 P95 截断尖峰），图例点击筛选，单选探针显示丢包面积。1h 是虚拟档：接口仍请求 period=1d，再在前端截取最近 60 分钟（TSDB 模式约 30s/点，约 120 个点），每 30 秒自动刷新；游客也能看 1h。 |
-| 4 | 离线处理 | 服务器离线显示 `--`；探针不可达但服务器在线时丢包 100.0%；无数据时显示 `--`，不编造数字。 |
-| 5 | 自动刷新 | 默认每 30 秒刷新总览与历史（页面隐藏时暂停），面板右上角也有手动刷新按钮；WebSocket 断线 5 秒后重连。 |
-| 6 | 延迟开关球 | 右上角悬浮按钮（`#nl-fab`，top:180px，right:20px）：45px 圆形、透明无边框，里面是 24px 描边仪表图标，悬停放大 1.1 倍；点一下开关卡片条的显隐（不开详情面板），图标绿=开、红=关；状态存 localStorage（`nl-strips-enabled`），刷新后保持。 |
-| 7 | 卡片内流量进度条 | 每张服务器卡片内、延迟条之前，整行显示本周期流量：已用 / 总量 + 进度条 + 周期时间信息（周期起止、下次更新，轮换显示）；每 60 秒刷新一次。开关见 `window.TrafficScriptConfig`（把流量显示开关设为 `false` 即可关闭，默认开启）。 |
+| 2 | 离线处理 | 服务器离线显示 `--`；探针不可达但服务器在线时丢包 100.0%；无数据时显示 `--`，不编造数字。 |
+| 3 | 自动刷新 | 默认每 30 秒刷新卡片条数据（页面隐藏时暂停）；WebSocket 断线 5 秒后重连。 |
+| 4 | 延迟开关球 | 右上角悬浮按钮（`#nl-fab`，top:180px，right:20px）：45px 圆形、透明无边框，里面是 24px 描边仪表图标，悬停放大 1.1 倍；点一下开关卡片条的显隐，图标绿=开、红=关；状态存 localStorage（`nl-strips-enabled`），刷新后保持。 |
+| 5 | 卡片内流量进度条 | 每张服务器卡片内、延迟条之前，整行显示本周期流量：已用 / 总量 + 进度条 + 周期时间信息（周期起止、下次更新，轮换显示）；每 60 秒刷新一次。开关见 `window.TrafficScriptConfig`（把流量显示开关设为 `false` 即可关闭，默认开启）。 |
 
 ## 安装（Nezha v2）
 
@@ -33,7 +31,7 @@ jsdelivr 上的 `NezhaLatency.js`。
 ```
 
 `NezhaLatency.js` 是由 `NezhaLatency.html` 用 `build-js.py` 生成的
-同款单文件 JS：它自己注入样式和面板节点，再执行同样的逻辑，
+同款单文件 JS：它自己注入样式和节点，再执行同样的逻辑，
 和直接粘贴 HTML 效果一样。改配置时，在这行前面再加一行：
 
 ```html
@@ -74,23 +72,14 @@ var NezhaLatencyConfig = {
   serviceApi: '/api/v1/service',
   profileApi: '/api/v1/profile',
   refreshSec: 30,              // 自动刷新间隔（秒），0 = 不自动刷新
-  ranges: [                    // v2 API 只支持 1d/7d/30d；1h 是虚拟档，接口请求 1d，前端截取最近 60 分钟
-    { label: '1h',  value: '1h' },
-    { label: '24h', value: '1d' },
-    { label: '7d',  value: '7d' },
-    { label: '30d', value: '30d' }
-  ],
-  defaultRange: '1h',
   thresholds: { latencyGreen: 200, latencyAmber: 300, lossGreen: 1, lossAmber: 5 }, // 延迟绿 <200ms · 黄 <300ms；丢包绿 <1% · 黄 <5%
-  peakCut: { enabled: true, percentile: 95 },
-  attachCards: true,           // 尽力而为：给官方前端的服务器卡片底部加延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段）；条只作展示不可点；失败不影响面板）
-  wsStaleSec: 90,              // last_active 超过这么多秒未更新视为离线
-  maxDetailPoints: 600         // 图表单条线最多点数（超出降采样）
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片底部加延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段）；条只作展示不可点；失败不影响页面）
+  wsStaleSec: 90               // last_active 超过这么多秒未更新视为离线
 };
 ```
 
 也可以在页面里先定义 `window.NezhaLatencyConfig` 再加载本文件，会与默认配置合并。
-调试用：`window.NezhaLatency = { open, close, refresh, toggleStrips, config, state }`。
+调试用：`window.NezhaLatency = { refresh, toggleStrips, config, state }`。
 
 ## 取数口径
 
@@ -116,10 +105,8 @@ max_latency, latency_notify}`。其中 `type`：**1=HTTP GET，2=ICMP ping，
 - **没有任何地方存丢包率**（`loss` 在模型、TSDB 指标、响应结构里
   全文检索为零）。丢包一律推导：`loss% = 100 - up_percent`，
   其中 `up_percent = up / (up + down) * 100`。
-- 降采样（`pkg/tsdb/query.go:54-67`）：1d 约 30 秒/点，7d 约 30 分钟/点，
-  30d 约 2 小时/点；每桶只算**平均**延迟，不保留最小/最大延迟。
-  详情里的“最低/最高延迟”取的是该范围返回的点列里的最小/最大值，
-  不是探针原始采样值。
+- 降采样（`pkg/tsdb/query.go:54-67`）：1d 约 30 秒/点；每桶只算**平均**延迟，
+  不保留最小/最大延迟。卡片条只用 1d 历史。
 - 探针写路径：TCP/ICMP 按 `AvgPingCount`（默认 2 次）取平均后写一次；
   HTTP 每次上报都写（`service/singleton/servicesentinel.go:860-908`）。
 
@@ -141,7 +128,6 @@ max_latency, latency_notify}`。其中 `type`：**1=HTTP GET，2=ICMP ping，
 | `GET /api/v1/ws/server` | 公开（`force_auth=false` 时游客可用；`force_auth=true` 时需 JWT/PAT） | WebSocket，每 2 秒推 `{now, online, servers: [StreamServer]}`；`StreamServer{id, name, public_note（仅首包）, display_index, host, state, country_code, last_active}`（`model/server_api.go:5-21`）。**这是游客拿服务器列表的唯一途径** |
 | `GET /api/v1/service` | 公开，`nezha:service:read` | `ServiceResponse{services: map[uint64]ServiceResponseItem, cycle_transfer_stats}`；每项含 `service_name, current_up, current_down, total_up, total_down, delay[30], up[30], down[30]`（30 天日粒度）（`model/service_api.go:24-33`） |
 | `GET /api/v1/service/:id/history` | 公开，`?period=1d\|7d\|30d`（默认 1d） | `ServiceHistoryResponse{service_id, service_name, servers: [{server_id, server_name, stats: {avg_delay, up_percent, total_up, total_down, data_points: [{ts, delay, status}]}}]}`（`model/service_history_api.go:12-37`）。**游客只能查 1d**，否则返回 `unauthorized: only 1d data available for guests`（`cmd/dashboard/controller/service.go:171-174`） |
-| `GET /api/v1/server/:id/service` | 公开，`?period=1d\|7d\|30d` | 旧版接口：`[]ServiceInfos{monitor_id, server_id, monitor_name, server_name, display_index, created_at: [ms], avg_delay: []}`（`model/service_history_api.go:4-11`） |
 | `GET /api/v1/server/:id/metrics` | 公开，`?metric=` 必填，`?period=1d\|7d\|30d` | 仅 TSDB 启用时有数据；本项目未使用 |
 | `GET /api/v1/server` | **仅登录** | 游客不要用；服务器列表请走上面的 WebSocket |
 | `GET /api/v1/service/list` | **仅登录** | 完整服务配置行；游客不要用 |
@@ -159,25 +145,17 @@ Tailwind v4 + shadcn 风格，`:root` / `.dark` 上是 HSL 三元组变量：
 由 `hsl(var(--background))` 这种形式消费。暗色是 `<html>` 上的
 `.dark` / `.light` class（不是 data 属性），由 `localStorage["vite-ui-theme"]`
 （`light|dark|system`，默认 `system`）+ `prefers-color-scheme` 决定。
-本文件把它们映射成自己的 `--nl-*` 变量并带回退值，暗色变化时监听
-`<html>` 的 class 变化并重绘图表。
+本文件把它们映射成自己的 `--nl-*` 变量并带回退值。
 根节点是 `<div id="root">`（React 19 + Vite 8，路由只有 `/` 和 `/server/:id`）。
 
 ## 已知限制
 
-- **时间范围是 1h（实时，虚拟档）/ 24h / 7d / 30d**，没有 6h / 12h / 3d（v2 API 限制，见上）。1h 不是接口档，是前端从 1d 数据里截取最近 60 分钟；TSDB 模式下 1d 约 30s/点，1h 约 120 个点，SQLite 模式下点数可能更少。
-- **游客可看 1h 和 24h**，7d / 30d 需要登录（v2 接口限制；游客点 7d/30d 会提示
-  并自动切回 1h）。
-- **丢包是推导值**，不是实测丢包字段：按桶统计（桶内失败记 100%，成功记
-  0%），平均丢包 = 失败桶占比；1d 约 30 秒/桶，7d 约 30 分钟/桶，30d 约
-  2 小时/桶，所以短时丢包会被桶平均稀释。
-- **每桶只有平均延迟**，没有最小/最大延迟；详情里的最低/最高取自返回点列。
+- **丢包是推导值**，不是实测丢包字段：卡片条的丢包取最近 1 小时内该组点
+  的 `down / (up + down)`；短时丢包会被 1 小时窗口平均稀释。
 - **服务器卡片延迟条是尽力而为**：本文件尝试给官方前端的服务器卡片
-  底部追加延迟条，官方前端改版后可能失效；失效不影响面板本身（面板内的
-  服务器表是确定可用的）。卡片是 React 渲染、DOM 会重建，所以用 5 秒轮询
-  + MutationObserver 补挂；首屏加载时自动拉一次数据，卡片条不依赖打开面板也能显示。
-- **ECharts 靠 CDN**：jsdelivr 失败自动换 unpkg；两个都失败时图表区降级为
-  聚合数据表（平均延迟/丢包/数据点数），不白屏。
+  底部追加延迟条，官方前端改版后可能失效；失效不影响页面其它功能。
+  卡片是 React 渲染、DOM 会重建，所以用 5 秒轮询
+  + MutationObserver 补挂；首屏加载时自动拉一次数据。
 - **TSDB 未启用时**：历史走 SQLite `ServiceHistory`，数据点可能比 TSDB 稀疏；
   `GET /api/v1/server/:id/metrics` 在 TSDB 关闭时返回空，本项目未使用该接口。
 - **仅适配 Nezha v2**：v1 的接口与注入方式不同，请勿混用。
@@ -193,12 +171,12 @@ Tailwind v4 + shadcn 风格，`:root` / `.dark` 上是 HSL 三元组变量：
    `ServiceHistory` 行是否会被清理、保留多久，未在源码里找到清理代码。
 3. **反代 / 子路径**：WS 在反代后是否放行、子路径部署时相对路径是否正常，
    需在真实实例上验证；`CONFIG.apiBase` 可填绝对地址应急（需服务端允许 CORS）。
-4. **CDN 可达性**：jsdelivr / unpkg 在访客网络下是否可达；ECharts 加载失败时会降级为数据表。
+4. **CDN 可达性**：jsdelivr 在访客网络下是否可达（script 引用方式依赖它）。
 5. **在线阈值**：`wsStaleSec: 90` 是实现选择，未在官方前端里核对同类阈值；
    若 agent 上报间隔配得很大，可能把在线判成离线，可按需调大。
 6. **服务覆盖与 HideForGuest**：`HideForGuest=true` 的服务/服务器对游客不可见；
-   `cover=1`（仅指定服务器）时，未列出的服务器在该服务下无数据，详情里会
-   显示“暂无探针数据”，这是正常的。
+   `cover=1`（仅指定服务器）时，未列出的服务器在该服务下无数据，不会
+   计入该组的卡片条统计，这是正常的。
 
 ## 文件清单
 

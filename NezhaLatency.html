@@ -2,9 +2,8 @@
   NezhaLatency v2 —— 延迟 / 丢包面板（Komari 参考站风格，适配 Nezha v2）
   ============================================================================
   参考：https://komari.alicloud.ru/（Komari Monitor + Nezha 主题）
-    首页卡片底部：当前延迟 + 丢包率 + 两条分段历史条（绿/黄/红，左延迟右丢包）
-    详情页 Network 标签：多探针平均延迟/丢包、双轴图（左延迟 ms / 右丢包 %）、
-    时间范围、Peak cut 开关、可点击图例；离线显示 -- / --，探针不可达时丢包 100%
+    首页卡片底部：当前延迟 + 丢包率 + 两条分段历史条（绿/黄/红，左延迟右丢包）；
+    离线显示 --，探针不可达时丢包 100%
   适配目标：nezhahq/nezha v2（dashboard main，官方用户前端 hamster1963/nezha-dash-v2 v2.7.0）
     注意：v2 的仪表盘版本号在构建时注入，源码里默认是 "debug"；
     这里说的 v2.7.0 是前端清单 service/singleton/frontend-templates.yaml 锁定的用户前端版本。
@@ -24,25 +23,15 @@
                                           servers:[{server_id, server_name, stats:{avg_delay,
                                           up_percent, total_up, total_down, data_points:[{ts, delay,
                                           status}]}}]}  model/service_history_api.go:12-37
-    GET  /api/v1/server/:id/service      公开，?period=1d|7d|30d，游客只能查 1d
-                                          返回 []ServiceInfos{monitor_id, server_id, monitor_name,
-                                          server_name, display_index, created_at:[ms], avg_delay:[]}
-                                          model/service_history_api.go:4-11
     GET  /api/v1/profile                 仅登录（JWT，PAT 被禁），200 + success:true = 已登录
                                           用于判断游客/会员；游客调用会 401，这是正常的
     GET  /api/v1/setting                 游客可读（精简版），本文件不依赖它，仅作参考
     GET  /api/v1/server                  仅登录，游客不要用；服务器列表请走上面的 WebSocket
   重要：Nezha v2 里没有任何一个字段叫 loss / 丢包。丢包率一律由 up/down
     计数推导：loss% = 100 - up_percent = down / (up + down) * 100。
-    历史只有 1d / 7d / 30d 三档 —— Komari 的 1h / 6h / 12h / 3d 在 v2 API
-    里不存在（period 参数会直接报错）。所以“1小时实时”是虚拟档：
-    接口仍请求 period=1d（1d 约 30s/点，TSDB 模式下最近 1 小时约 120 个点），
-    再在前端只取最近 60 分钟的数据画图、算平均延迟/丢包，每 30 秒刷新一次。
-    游客也能看 1h（它是 1d 的子集），7d / 30d 仍需登录。
   存储：延迟/状态写进 VictoriaMetrics TSDB（nezha_service_delay /
     nezha_service_status，默认保留 30 天），仅当 tsdb.data_path 配置后才
-    启用；未启用时走 SQLite ServiceHistory 表。1d 约 30s/点，7d 约 30 分钟/点，
-    30d 约 2 小时/点（pkg/tsdb/query.go）。
+    启用；未启用时走 SQLite ServiceHistory 表。1d 约 30s/点（pkg/tsdb/query.go）。
 
   安装（Nezha v2 Dashboard）：
     后台 /dashboard/ → 设置 → 自定义代码（custom_code）→ 把本文件全部内容
@@ -55,8 +44,7 @@
     默认开启绿点，点一下关闭红点、卡片条全部隐藏，再点恢复。
   配置：只改 script 开头的 CONFIG 对象即可，不用动其它代码；也可以在页面
     里先定义 window.NezhaLatencyConfig 再加载本文件，会与默认配置合并。
-  依赖：ECharts 5（CDN，jsdelivr 失败时自动换 unpkg；两个都失败时图表区
-    降级为聚合数据表）。其余无外部库。
+  无外部库依赖。
 -->
 <style>
 /* ================= 1. Nezha v2 主题变量适配 =================
@@ -92,8 +80,7 @@ html.dark {
    地球球同一列：45px 圆形，位置 $ 球 top:70px、地球球 top:125px，
    本球 top:180px（55px 间距），right:20px，不挡卡片内容。
    样式按 Komari 站截图：不要边框、透底（背景透明、无阴影、无毛玻璃），
-   里面是 24px 描边图标。行为是开关卡片条的显隐，不再打开详情面板
-   （开面板改点卡片条）。按钮本身不带圆点：图标颜色表示状态，
+   里面是 24px 描边图标。行为是开关卡片条的显隐。按钮本身不带圆点：图标颜色表示状态，
    开启绿 #22c55e、关闭红 #ef4444（点击切换）。 */
 /* 卡片条关闭时：body 加 .nl-strips-off，新注入的条也会自动隐藏 */
 body.nl-strips-off .nl-home-strip { display: none !important; }
@@ -112,76 +99,13 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 #nl-fab:hover { transform: scale(1.1); }
 #nl-fab.off { color: #ef4444; }
 #nl-fab svg { display: block; }
-/* ================= 2. 面板 ================= */
-#nl-modal-overlay {
-  position: fixed; inset: 0; z-index: 2000;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  display: none; align-items: flex-start; justify-content: center;
-  overflow-y: auto; padding: 24px 12px;
-}
-#nl-modal-overlay.show { display: flex; }
-#nl-modal {
-  width: min(1060px, 96vw);
-  background: var(--nl-card); color: var(--nl-fg);
-  border: 1px solid var(--nl-border); border-radius: 16px;
-  box-shadow: 0 16px 48px var(--nl-shadow);
-  overflow: hidden;
-}
-.nl-modal-head {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 10px;
-  padding: 14px 18px; border-bottom: 1px solid var(--nl-border);
-}
-.nl-modal-head h2 { margin: 0; font-size: 1.15rem; font-weight: 700; }
-.nl-modal-head .nl-sub { font-size: 0.8rem; color: var(--nl-muted); }
-.nl-modal-head .nl-spacer { flex: 1; }
-.nl-btn {
-  background: transparent; border: 1px solid var(--nl-border); color: var(--nl-fg);
-  border-radius: 8px; padding: 5px 11px; font-size: 0.82rem; cursor: pointer;
-}
-.nl-btn:hover { border-color: var(--nl-accent); }
-.nl-btn.active { background: var(--nl-accent); color: var(--nl-accent-fg); border-color: var(--nl-accent); }
-.nl-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-.nl-close { font-size: 1.2rem; line-height: 1; padding: 2px 9px; }
-.nl-body { padding: 16px 18px 20px; }
-.nl-notice {
-  display: none; margin: 0 0 12px; padding: 9px 12px; border-radius: 8px;
-  background: rgba(245, 158, 11, 0.12); border: 1px solid var(--nl-amber);
-  color: var(--nl-fg); font-size: 0.83rem;
-}
-.nl-notice.show { display: block; }
-.nl-notice.err { background: rgba(239, 68, 68, 0.1); border-color: var(--nl-red); }
-.nl-stats { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 14px; }
-.nl-stat {
-  flex: 1 1 140px; border: 1px solid var(--nl-border); border-radius: 12px;
-  padding: 10px 14px; background: var(--nl-bg);
-}
-.nl-stat .nl-k { font-size: 0.75rem; color: var(--nl-muted); }
-.nl-stat .nl-v { font-size: 1.25rem; font-weight: 700; margin-top: 2px; }
-.nl-stat .nl-v small { font-size: 0.75rem; font-weight: 400; color: var(--nl-muted); }
-.nl-section-title { font-size: 0.95rem; font-weight: 700; margin: 16px 0 8px; }
-.nl-section-title:first-child { margin-top: 0; }
-/* 服务卡片 */
-.nl-svc-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 10px; }
-.nl-svc {
-  border: 1px solid var(--nl-border); border-radius: 12px; padding: 12px 14px;
-  background: var(--nl-bg); cursor: pointer;
-}
-.nl-svc:hover { border-color: var(--nl-accent); }
-.nl-svc.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }
-.nl-svc-top { display: flex; align-items: center; gap: 8px; }
-.nl-svc-top .nl-name { font-weight: 700; font-size: 0.92rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.nl-svc-top .nl-type { font-size: 0.7rem; color: var(--nl-muted); border: 1px solid var(--nl-border); border-radius: 6px; padding: 1px 6px; }
-.nl-svc-top .nl-up { margin-left: auto; font-size: 0.82rem; font-weight: 700; }
-.nl-svc-metrics { display: flex; gap: 16px; margin: 8px 0 6px; font-size: 0.82rem; color: var(--nl-muted); }
-.nl-svc-metrics b { color: var(--nl-fg); font-size: 0.95rem; }
+
 /* 分段历史条（Komari 风格：30 段，绿/黄/红） */
 .nl-bars { display: flex; gap: 3px; height: 6px; margin: 4px 0 2px; }
 .nl-bars i { flex: 1; border-radius: 999px; background: var(--nl-grey); min-width: 2px; }
 .nl-bars i.g { background: var(--nl-green); }
 .nl-bars i.a { background: var(--nl-amber); }
 .nl-bars i.r { background: var(--nl-red); }
-.nl-bars-label { display: flex; justify-content: space-between; font-size: 0.7rem; color: var(--nl-muted); }
 /* Komari 卡片式延迟/丢包条（截图样式）：一行“延迟 xxx ms 丢包率 x.x%”，下面左右两条分段条并排
    尺寸对标卡片原生统计行（nezha-dash bundle 实测：标签/数值均为 text-xs=12px，
    下方细进度条 h-1=4px；截图实测条文字比原生大 ~26%、柱体约 2 倍，故改小） */
@@ -189,7 +113,7 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-card-strip-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.75rem; color: var(--nl-muted); }
 .nl-card-strip-head b { color: var(--nl-fg); font-size: 0.75rem; font-variant-numeric: tabular-nums; }
 /* 首页条字号对标卡片“价格/剩余天数”行（nezha-dash bundle 实测 text-[10px]=10px，
-   截图实测该行字高 22px、条行字高 25px；只改首页条，面板内服务卡片不动） */
+   截图实测该行字高 22px、条行字高 25px；只改首页条） */
 .nl-home-strip .nl-card-strip-head, .nl-home-strip .nl-card-strip-head b { font-size: 0.625rem; }
 .nl-card-strip-bars { display: flex; gap: 8px; margin-top: 4px; }
 .nl-card-strip-bars .nl-bars { flex: 1; margin: 0; height: 4px; gap: 2px; }
@@ -201,36 +125,7 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
    宽 100%，在横向卡片里换行独占一行，在纵向卡片里自然占满整行；位置在
    延迟条之前（卡片倒数第二行），与上方内容隔开 */
 .nl-traffic-row { margin-top: 8px; }
-/* 服务器表 */
-.nl-table-wrap { overflow-x: auto; border: 1px solid var(--nl-border); border-radius: 12px; }
-.nl-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; min-width: 620px; }
-.nl-table th, .nl-table td { padding: 8px 12px; text-align: left; border-bottom: 1px solid var(--nl-border); white-space: nowrap; }
-.nl-table th { color: var(--nl-muted); font-weight: 600; background: var(--nl-bg); }
-.nl-table tr:last-child td { border-bottom: none; }
-.nl-table tbody tr { cursor: pointer; }
-.nl-table tbody tr:hover { background: var(--nl-bg); }
-.nl-table tbody tr.sel { background: rgba(59, 130, 246, 0.08); }
-.nl-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
-.nl-pill.g { background: rgba(34, 197, 94, 0.15); color: var(--nl-green); }
-.nl-pill.a { background: rgba(245, 158, 11, 0.15); color: var(--nl-amber); }
-.nl-pill.r { background: rgba(239, 68, 68, 0.15); color: var(--nl-red); }
-.nl-pill.grey { background: rgba(156, 163, 175, 0.18); color: var(--nl-muted); }
-.nl-num { font-variant-numeric: tabular-nums; }
-/* 探针按钮与图表 */
-.nl-probes { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
-.nl-probe {
-  border: 1px solid var(--nl-border); border-radius: 10px; padding: 8px 12px;
-  background: var(--nl-bg); cursor: pointer; min-width: 170px; text-align: left;
-}
-.nl-probe.sel { border-color: var(--nl-accent); box-shadow: 0 0 0 1px var(--nl-accent); }
-.nl-probe .nl-pname { font-weight: 700; font-size: 0.85rem; }
-.nl-probe .nl-pmeta { font-size: 0.75rem; color: var(--nl-muted); margin-top: 3px; line-height: 1.5; }
-#nl-chart { width: 100%; height: 360px; margin-top: 8px; }
-.nl-chart-fallback { width: 100%; border-collapse: collapse; font-size: 0.82rem; margin-top: 8px; }
-.nl-chart-fallback th, .nl-chart-fallback td { border: 1px solid var(--nl-border); padding: 6px 10px; text-align: right; }
-.nl-chart-fallback th:first-child, .nl-chart-fallback td:first-child { text-align: left; }
-.nl-hint { font-size: 0.78rem; color: var(--nl-muted); margin-top: 10px; line-height: 1.6; }
-.nl-empty { color: var(--nl-muted); font-size: 0.85rem; padding: 12px 0; }
+
 /* 首页卡片延迟条：地区实时值（按后端服务前缀动态分组，各一行），只作展示，不可点 */
 .nl-home-strip { border-top: 1px solid var(--nl-border); padding-top: 8px; width: 100%; box-sizing: border-box; }
 /* 首页卡片条：每地区一行，第一行分左右两半，与下方分段柱左右对齐：左半为地区名 +
@@ -244,108 +139,32 @@ body.nl-strips-off .nl-home-strip { display: none !important; }
 .nl-region-row { padding: 4px 0 1px; }
 .nl-region-row + .nl-region-row { border-top: 1px dashed var(--nl-border); margin-top: 3px; }
 .nl-region-row .nl-region-tag { font-weight: 600; color: var(--nl-fg); }
-@media (max-width: 640px) {
-  #nl-chart { height: 300px; }
-  .nl-probe { min-width: 140px; flex: 1 1 40%; }
-}
 </style>
 
 <!-- 延迟开关球见文件末尾 #nl-fab（与 $ 球、地球球同组右侧悬浮按钮） -->
-<!-- 面板 -->
-<div id="nl-modal-overlay">
-  <div id="nl-modal" role="dialog" aria-label="延迟 / 丢包">
-    <div class="nl-modal-head">
-      <h2>延迟 / 丢包</h2><span class="nl-sub" id="nl-modal-sub">Nezha v2 · 探针监控</span>
-      <span class="nl-spacer"></span>
-      <span id="nl-range-wrap" style="display:flex;gap:6px"></span>
-      <button class="nl-btn" id="nl-peak-btn" type="button" title="把延迟高于 P95 的尖峰截断到 P95，让曲线更易读">Peak cut：开</button>
-      <button class="nl-btn" id="nl-refresh-btn" type="button">刷新</button>
-      <button class="nl-btn nl-close" id="nl-close-btn" type="button" aria-label="关闭">×</button>
-    </div>
-    <div class="nl-body">
-      <div class="nl-notice" id="nl-notice"></div>
-      <div class="nl-stats" id="nl-stats"></div>
-      <div class="nl-section-title">服务总览 <span style="font-weight:400;color:var(--nl-muted);font-size:.78rem">（来自 GET /api/v1/service，30 天日粒度）</span></div>
-      <div class="nl-svc-grid" id="nl-services"><div class="nl-empty">正在加载服务数据…</div></div>
-      <div class="nl-section-title">服务器 <span style="font-weight:400;color:var(--nl-muted);font-size:.78rem">（当前延迟取 24h 历史最新桶；丢包 = 100 − 正常率）</span></div>
-      <div class="nl-table-wrap"><table class="nl-table">
-        <thead><tr><th>服务器</th><th>状态</th><th>当前延迟</th><th>平均延迟 24h</th><th>丢包 24h</th><th>探针</th></tr></thead>
-        <tbody id="nl-servers"><tr><td colspan="6" class="nl-empty">正在加载服务器数据…</td></tr></tbody>
-      </table></div>
-      <div id="nl-detail" style="display:none">
-        <div class="nl-section-title" id="nl-detail-title">详情</div>
-        <div class="nl-probes" id="nl-probes"></div>
-        <div id="nl-chart"></div>
-        <div id="nl-chart-fallback"></div>
-        <div class="nl-hint" id="nl-detail-hint"></div>
-      </div>
-      <div class="nl-hint">
-        数据来源：Nezha v2 服务探针（HTTP / ICMP / TCP）。延迟为探针实测往返毫秒数；
-        丢包率由探针成功/失败计数推导，Nezha v2 不直接存储丢包字段。
-        时间范围：1h（实时，最近 60 分钟，每 30 秒刷新）/ 24h / 7d / 30d——
-        1h 是虚拟档，接口仍请求 period=1d 再在前端截取最近 1 小时，因为 v2 API
-        的 period 只接受 1d / 7d / 30d，1h 会直接报错。游客可查看 1h 和 24h，
-        7d / 30d 需要登录。
-      </div>
-    </div>
-  </div>
-</div>
-
-<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐，不开详情面板；图标绿=开、红=关-->
+<!--延迟显示开关（#nl-fab）：与资产统计 $ 球、地球球同组右侧悬浮按钮，点一下开关卡片条显隐；图标绿=开、红=关-->
 <button id="nl-fab" type="button" title="延迟显示：开，点击关闭" aria-label="延迟显示开关" aria-pressed="true"><svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 14 4-4"/><path d="M3.34 19a10 10 0 1 1 17.32 0"/></svg></button>
 
+
 <script>
-// ================= 2. ECharts 加载（jsdelivr 失败自动换 unpkg，都失败则降级为数据表） =================
-(function () {
-  var NL_ECHARTS_CDNS = [
-    'https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js',
-    'https://unpkg.com/echarts@5.5.0/dist/echarts.min.js'
-  ];
-  window.__nlLoadECharts = function (cb) {
-    if (window.echarts) return cb(true);
-    var i = 0;
-    function next() {
-      if (i >= NL_ECHARTS_CDNS.length) return cb(false);
-      var s = document.createElement('script');
-      s.src = NL_ECHARTS_CDNS[i++]; s.async = true;
-      var done = false;
-      s.onload = function () { if (!done) { done = true; cb(!!window.echarts); } };
-      s.onerror = function () { if (!done) { done = true; next(); } };
-      setTimeout(function () { if (!done) { done = true; next(); } }, 8000);
-      document.head.appendChild(s);
-    }
-    next();
-  };
-})();
-</script>
-<script>
-// ================= 3. 配置（只改这里） =================
+// ================= 2. 配置（只改这里） =================
 var NezhaLatencyConfig = Object.assign({
   apiBase: '',                 // '' = 与当前页面同源（custom_code 注入时请保持 ''）；独立测试时可填 https://nezha.example.com（需服务端允许 CORS）
   wsServerUrl: '/api/v1/ws/server',
   serviceApi: '/api/v1/service',
   profileApi: '/api/v1/profile',
   refreshSec: 30,              // 自动刷新间隔（秒），0 = 不自动刷新
-  ranges: [                    // 注意：v2 API 只支持 1d / 7d / 30d；1h 是虚拟档，见下
-    { label: '1h',  value: '1h' },   // 实时：接口请求 period=1d，前端截取最近 60 分钟
-    { label: '24h', value: '1d' },
-    { label: '7d',  value: '7d' },
-    { label: '30d', value: '30d' }
-  ],
-  defaultRange: '1h',
   thresholds: {
     latencyGreen: 200,         // 延迟 <200ms 绿色（Komari 截图：RakSmart 183ms 为绿色，所以绿线必须 >183，取 200；不是官方前端的 100）
     latencyAmber: 300,         // 延迟 <300ms 黄色，否则红色
     lossGreen: 1,              // 丢包 <1% 绿色；正常率 >=99% 绿色，>=95% 黄色，否则红色
     lossAmber: 5
   },
-  peakCut: { enabled: true, percentile: 95 },  // 默认开启 Peak cut
   // 延迟显示开关（#nl-fab，2026-11-21）：与 $ 球、地球球同组右侧悬浮按钮，
   // 默认开启（绿点），点一下关闭（红点，卡片条全部隐藏），再点恢复；状态存
-  // localStorage 'nl-strips-enabled'，刷新后保持。按钮本身不开详情面板。
-  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段），截图样式，条只作展示不可点；失败不影响面板）
-  wsStaleSec: 90,              // WS 的 last_active 超过这么多秒未更新，视为离线
-  maxDetailPoints: 600         // 图表单条线最多点数（超出会降采样）
+  // localStorage 'nl-strips-enabled'，刷新后保持。按钮只开关卡片条显隐。
+  attachCards: true,           // 尽力而为：给官方前端的服务器卡片内最底部加地区实时延迟条（按后端服务前缀动态分组，每行一组：组内最新有效点延迟 + 最近 1 小时丢包 + 最近 24 小时分段柱（手机 12 段、电脑 24 段），截图样式，条只作展示不可点；失败不影响页面）
+  wsStaleSec: 90               // WS 的 last_active 超过这么多秒未更新，视为离线
 }, (window.NezhaLatencyConfig || {}));
 </script>
 <script>
@@ -389,34 +208,6 @@ var NezhaLatencyConfig = Object.assign({
     if (v < CFG.thresholds.lossAmber) return 'a';
     return 'r';
   }
-  function uptimeClass(u) { // u = uptime %，与官方前端阈值一致
-    if (u == null || isNaN(u)) return 'grey';
-    if (u >= 99) return 'g';
-    if (u >= 95) return 'a';
-    return 'r';
-  }
-  function showNotice(msg, isErr) {
-    var n = $('nl-notice');
-    if (!msg) { n.className = 'nl-notice'; n.textContent = ''; return; }
-    n.className = 'nl-notice show' + (isErr ? ' err' : '');
-    n.textContent = msg;
-  }
-  function isDark() {
-    return document.documentElement.classList.contains('dark') ||
-      (function () { try { return localStorage.getItem('vite-ui-theme') === 'dark'; } catch (e) { return false; } })() ||
-      (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches &&
-        !document.documentElement.classList.contains('light'));
-  }
-  function themeColors() {
-    var cs = getComputedStyle(document.documentElement);
-    function v(name, fb) { var x = cs.getPropertyValue(name).trim(); return x ? 'hsl(' + x + ')' : fb; }
-    return {
-      fg: v('--foreground', '#111'), muted: v('--muted-foreground', '#888'),
-      border: v('--border', '#e5e7eb'), accent: v('--primary', '#3b82f6'),
-      green: '#22c55e', amber: '#f59e0b', red: '#ef4444', grey: '#9ca3af',
-      card: v('--card', '#fff')
-    };
-  }
   // ---- API：统一处理 {success, data, error} 信封；HTTP 200 也可能 success:false ----
   function apiGet(path) {
     return fetch(apiUrl(path), { credentials: 'same-origin' }).then(function (r) { return r.json(); })
@@ -425,7 +216,7 @@ var NezhaLatencyConfig = Object.assign({
         return j && ('data' in j) ? j.data : j;
       });
   }
-  // ---- 延迟显示开关（#nl-fab，2026-11-21）：开关卡片条显隐，不开详情面板 ----
+  // ---- 延迟显示开关（#nl-fab，2026-11-21）：开关卡片条显隐 ----
   // 状态存 localStorage 'nl-strips-enabled'，'1' = 开（默认），'0' = 关；
   // 读不到或异常时默认开启。显隐用 body 上的 .nl-strips-off class + CSS 控制，
   // 开关关闭期间新注入的条也会自动隐藏。
@@ -440,14 +231,7 @@ var NezhaLatencyConfig = Object.assign({
     services: [],              // [{id, name, type, ...}]，来自 /api/v1/service
     regionGroups: [],          // 地区列表：按 service_name 前缀动态分组（见 loadServices），后台增删服务时跟着变
     regionLabel: {},           // 地区行名：前缀 -> 后端服务实际名称（见 loadServices），如 SCCM -> SCCM-v4
-    svcStats: {},              // serviceId -> {avgDelay, uptime, totalUp, totalDown}
-    histByServer: {},          // serverId -> {avgDelay, loss, lastDelay, up, down}
-    range: CFG.defaultRange,
-    peakCut: CFG.peakCut.enabled,
-    detailServerId: null,
-    detailProbeId: null,       // 选中的探针 service id（单选时显示丢包面积）
-    chart: null,
-    echartsOk: null,
+    histByServer: {},          // serverId -> {groups: {prefix: {delay, loss, ts, n1h, buckets}}}
     ws: null, wsTimer: null, refreshTimer: null
   };
   function checkLogin() {
@@ -456,7 +240,6 @@ var NezhaLatencyConfig = Object.assign({
       .then(function (ok) { state.member = !!ok; return state.member; })
       .catch(function () { state.member = false; return false; });
   }
-  function typeName(t) { return t === 1 ? 'HTTP' : t === 2 ? 'ICMP' : t === 3 ? 'TCP' : '探针'; }
   function isOnline(srv, nowMs) {
     if (!srv) return false;
     if (srv.last_active) {
@@ -464,11 +247,6 @@ var NezhaLatencyConfig = Object.assign({
       if (!isNaN(t)) return (nowMs - t) <= CFG.wsStaleSec * 1000;
     }
     return !!srv.state; // 无 last_active 时，有 state 即视为在线（兜底，见 README）
-  }
-  function percentile(arr, p) {
-    if (!arr.length) return null;
-    var a = arr.slice().sort(function (x, y) { return x - y; });
-    return a[Math.min(a.length - 1, Math.floor((p / 100) * a.length))];
   }
 
   // ---- 首页卡片条：地区动态分组取数口径 ----
@@ -517,47 +295,19 @@ var NezhaLatencyConfig = Object.assign({
         if (!state.regionLabel[p]) state.regionLabel[p] = nm;
         if (nm === p + '-v4') state.regionLabel[p] = nm;
       });
-      state.services.forEach(function (s) {
-        var up = s.total_up || 0, down = s.total_down || 0, tot = up + down;
-        var delays = (s.delay || []).filter(function (v) { return typeof v === 'number' && !isNaN(v); });
-        state.svcStats[s._id] = {
-          avgDelay: delays.length ? delays.reduce(function (a, b) { return a + b; }, 0) / delays.length : null,
-          uptime: tot ? (up / tot) * 100 : null, totalUp: up, totalDown: down
-        };
-      });
-      renderServices();
       return state.services;
     });
   }
-  // 用各服务的 1d 历史汇总出每台服务器的延迟/丢包（只发 S 次请求，S=服务数）
+  // 用各服务的 1d 历史汇总出每台服务器各地区的延迟/丢包（只发 S 次请求，S=服务数）
   function loadServerLatency() {
     var nowMs = Date.now();
-    var dayStart = nowMs - 86400000, bucketMs = 7200000; // 服务器 24h 桶：12 桶（每桶 2 小时，面板用）
+    var dayStart = nowMs - 86400000; // 地区分段柱的起点：最近 24 小时
     var groupBucketMs = 3600000, GROUP_BUCKETS = 24; // 卡片条地区分段柱：最近 24 小时分 24 桶（每桶 1 小时）；手机端渲染时相邻两桶合并成 12 段
-    var agg = {}; // serverId -> {delays:[], up, down, lastDelay, lastTs, buckets:[12]{dSum,dN,up,down}}
     var gAgg = {}; // serverId -> prefix -> {lastDelay, lastTs, up1h, down1h}
     var jobs = state.services.map(function (s) {
       return apiGet('/api/v1/service/' + s._id + '/history?period=1d').then(function (data) {
         (data.servers || []).forEach(function (sv) {
           var st = sv.stats || {};
-          var a = agg[sv.server_id];
-          if (!a) {
-            a = agg[sv.server_id] = { delays: [], up: 0, down: 0, lastDelay: null, lastTs: 0, buckets: [] };
-            for (var bi = 0; bi < 12; bi++) a.buckets.push({ dSum: 0, dN: 0, up: 0, down: 0 });
-          }
-          if (typeof st.avg_delay === 'number') a.delays.push(st.avg_delay);
-          a.up += st.total_up || 0; a.down += st.total_down || 0;
-          (st.data_points || []).forEach(function (p) {
-            if (!p) return;
-            if (typeof p.delay === 'number' && p.ts > a.lastTs) { a.lastTs = p.ts; a.lastDelay = p.delay; }
-            var m = tsToMs(p.ts);
-            if (m == null) return;
-            var idx = Math.floor((m - dayStart) / bucketMs);
-            if (idx < 0 || idx > 11) return;
-            var bk = a.buckets[idx];
-            if (typeof p.delay === 'number') { bk.dSum += p.delay; bk.dN++; }
-            if (p.status === 1) bk.up++; else if (p.status === 0) bk.down++;
-          });
           // 地区实时值：该组内所有服务（v4/v6）的数据点都参与，但只有“近期有效”
           // 的服务才计入——有效 = 最近 1 小时内至少有一个 status=1 且 delay>0
           // 的点；失联的 v6 会被整段排除，不会把 0ms / 100% 丢包混进组里
@@ -603,21 +353,16 @@ var NezhaLatencyConfig = Object.assign({
     });
     return Promise.all(jobs).then(function () {
       var out = {};
-      Object.keys(agg).forEach(function (sid) {
-        var a = agg[sid], tot = a.up + a.down;
-        out[sid] = {
-          avgDelay: a.delays.length ? a.delays.reduce(function (x, y) { return x + y; }, 0) / a.delays.length : null,
-          loss: tot ? (a.down / tot) * 100 : null,
-          lastDelay: a.lastDelay, up: a.up, down: a.down,
-          buckets: a.buckets.map(function (bk) {
-            var btot = bk.up + bk.down;
-            return { delay: bk.dN ? bk.dSum / bk.dN : null, loss: btot ? (bk.down / btot) * 100 : null };
-          })
-        };
-      });
       // 按当前 state.regionGroups 建组：后台删掉的组不再出现（不留死数据），
-      // 没数据的组保留空值，卡片行显示 --
-      Object.keys(out).forEach(function (sid) {
+      // 没数据的组保留空值，卡片行显示 --；没有任何历史的服务器（如离线机）
+      // 也给一个空 groups 占位，卡片条才能挂上 -- 行，而不是被静默跳过。
+      // 注意：按 history 里出现的服务器建 out（不只按 state.servers），因为
+      // 首屏时 WS 可能还没推来服务器列表；WS 到达后 attachCardStrips 会用
+      // 已算好的 groups 渲染，30 秒刷新时再补齐
+      var sids = {};
+      Object.keys(gAgg).forEach(function (k) { sids[k] = true; });
+      state.servers.forEach(function (srv) { sids[srv.id] = true; });
+      Object.keys(sids).forEach(function (sid) {
         var groups = {};
         (state.regionGroups || []).forEach(function (prefix) {
           var gr = (gAgg[sid] || {})[prefix];
@@ -634,15 +379,10 @@ var NezhaLatencyConfig = Object.assign({
             }) : []
           };
         });
-        out[sid].groups = groups;
-      });
-      // 没有任何历史聚合的服务器（如 10 号离线机，6 个服务历史里都没有它）也给
-      // 一个空 groups 占位，卡片条才能挂上 -- 行，而不是被静默跳过
-      state.servers.forEach(function (srv) {
-        if (!out[srv.id]) out[srv.id] = { avgDelay: null, loss: null, lastDelay: null, up: 0, down: 0, buckets: [], groups: {} };
+        out[sid] = { groups: groups };
       });
       state.histByServer = out;
-      renderServers();
+      attachCardStrips();
       return out;
     });
   }
@@ -654,7 +394,7 @@ var NezhaLatencyConfig = Object.assign({
     ws.onmessage = function (ev) {
       try {
         var d = JSON.parse(ev.data);
-        if (d && d.servers) { state.servers = d.servers; renderServers(); }
+        if (d && d.servers) { state.servers = d.servers; attachCardStrips(); }
       } catch (e) {}
     };
     ws.onclose = function () { state.wsTimer = setTimeout(connectWS, 5000); };
@@ -670,343 +410,30 @@ var NezhaLatencyConfig = Object.assign({
         state.servers = (list || []).map(function (s) {
           return { id: s.id, name: s.name, country_code: s.country_code, display_index: s.display_index, last_active: s.last_active, state: s.state || null };
         });
-        renderServers();
+        attachCardStrips();
       }).catch(function () {
-        showNotice('服务器列表加载失败：WebSocket 未连通，且登录接口也不可用。请检查面板地址 / 反代配置。', true);
+        try { console.warn('[NezhaLatency] 服务器列表加载失败：WebSocket 未连通，且登录接口也不可用。请检查面板地址 / 反代配置。'); } catch (e) {}
       });
     } else if (!state.servers.length) {
-      showNotice('服务器列表加载失败：WebSocket 未连通。请检查面板地址 / 反代是否放行 WebSocket。', true);
+      try { console.warn('[NezhaLatency] 服务器列表加载失败：WebSocket 未连通。请检查面板地址 / 反代是否放行 WebSocket。'); } catch (e) {}
     }
   }
-  function loadAll() {
-    showNotice('');
+  // ---- 数据加载（卡片条） ----
+  // 首屏与每 30 秒刷新：先判断登录（供 WS 失败兜底用），再拉服务列表与各服务
+  // 1d 历史汇总出地区延迟/丢包，最后连 WebSocket 拿服务器列表；三步都只为
+  // 首页卡片条服务
+  function loadStripData() {
     return checkLogin().then(function () {
       return loadServices();
     }).then(function () {
       connectWS();
       return loadServerLatency();
     }).catch(function (err) {
-      showNotice('加载失败：' + (err && err.message ? err.message : err), true);
+      try { console.warn('[NezhaLatency] 卡片条数据加载失败：' + (err && err.message ? err.message : err)); } catch (e) {}
     });
   }
-  // ---- 渲染：总览 ----
-  function renderServices() {
-    var wrap = $('nl-services');
-    if (!state.services.length) { wrap.innerHTML = '<div class="nl-empty">暂无服务探针。请在 Nezha 后台 /dashboard/service 新建 HTTP / ICMP / TCP 监控服务。</div>'; return; }
-    var worstLoss = null, worstLat = null, sumLat = 0, nLat = 0;
-    state.services.forEach(function (s) {
-      var st = state.svcStats[s._id] || {};
-      if (st.avgDelay != null) { sumLat += st.avgDelay; nLat++; if (worstLat == null || st.avgDelay > worstLat) worstLat = st.avgDelay; }
-      if (st.uptime != null) { var l = 100 - st.uptime; if (worstLoss == null || l > worstLoss) worstLoss = l; }
-    });
-    $('nl-stats').innerHTML =
-      '<div class="nl-stat"><div class="nl-k">服务探针</div><div class="nl-v">' + state.services.length + ' <small>个</small></div></div>' +
-      '<div class="nl-stat"><div class="nl-k">服务器</div><div class="nl-v">' + state.servers.length + ' <small>台</small></div></div>' +
-      '<div class="nl-stat"><div class="nl-k">平均延迟（30 天均值）</div><div class="nl-v">' + fmtMs(nLat ? sumLat / nLat : null) + '</div></div>' +
-      '<div class="nl-stat"><div class="nl-k">最高延迟（30 天均值）</div><div class="nl-v">' + fmtMs(worstLat) + '</div></div>' +
-      '<div class="nl-stat"><div class="nl-k">最高丢包（30 天）</div><div class="nl-v">' + fmtPct(worstLoss) + '</div></div>';
-    wrap.innerHTML = state.services.map(function (s) {
-      var st = state.svcStats[s._id] || {};
-      var delays = s.delay || [], ups = s.up || [], downs = s.down || [];
-      // Komari 截图形式：只取最近 10 个点，左右两条分段条并排（左延迟、右丢包），每条约 10 段
-      var last10 = delays.slice(-10), last10Up = ups.slice(-10), last10Down = downs.slice(-10);
-      var lastDelay = null;
-      for (var k = delays.length - 1; k >= 0; k--) { if (typeof delays[k] === 'number') { lastDelay = delays[k]; break; } }
-      var curDelay = lastDelay != null ? lastDelay : st.avgDelay;
-      var uptime = st.uptime;
-      var curLoss = uptime == null ? null : 100 - uptime;
-      var barsLat = '', barsLoss = '';
-      for (var i = 0; i < 10; i++) {
-        var d = last10[i], u = last10Up[i], dn = last10Down[i], tot = (u || 0) + (dn || 0);
-        barsLat += '<i class="' + latencyClass(typeof d === 'number' ? d : null) + '" title="最近第 ' + (i + 1) + ' 天：延迟 ' + fmtMs(typeof d === 'number' ? d : null) + '"></i>';
-        var upPct = tot ? (u / tot) * 100 : null;
-        barsLoss += '<i class="' + uptimeClass(upPct) + '" title="最近第 ' + (i + 1) + ' 天：正常率 ' + fmtPct(upPct) + '"></i>';
-      }
-      return '<div class="nl-svc" data-svc="' + s._id + '">' +
-        '<div class="nl-svc-top"><span class="nl-name">' + esc(s.service_name || ('服务 ' + s._id)) + '</span>' +
-        '<span class="nl-type">' + typeName(s.type) + '</span>' +
-        '<span class="nl-up nl-pill ' + uptimeClass(uptime) + '">' + (uptime == null ? '--' : uptime.toFixed(1) + '% 正常') + '</span></div>' +
-        '<div class="nl-svc-metrics"><span>平均延迟 <b>' + fmtMs(st.avgDelay) + '</b></span>' +
-        '<span>丢包 <b>' + fmtPct(curLoss) + '</b></span>' +
-        '<span>成功 ' + (st.totalUp || 0) + ' / 失败 ' + (st.totalDown || 0) + '</span></div>' +
-        '<div class="nl-card-strip">' +
-        '<div class="nl-card-strip-head"><span>延迟 <b>' + fmtMs(curDelay) + '</b></span><span>丢包率 <b>' + fmtPct(curLoss) + '</b></span></div>' +
-        '<div class="nl-card-strip-bars"><div class="nl-bars">' + barsLat + '</div><div class="nl-bars">' + barsLoss + '</div></div>' +
-        '<div class="nl-bars-label"><span>延迟 · 最近 10 天</span><span>绿 &lt;200ms · 黄 &lt;300ms · 红 ≥300ms</span></div>' +
-        '</div>' +
-        '</div>';
-    }).join('');
-    wrap.querySelectorAll('.nl-svc').forEach(function (el) {
-      el.addEventListener('click', function () {
-        var id = Number(el.getAttribute('data-svc'));
-        var svc = state.services.filter(function (x) { return x._id === id; })[0];
-        if (svc) { state.detailProbeId = id; openDetail(null, id); }
-      });
-    });
-  }
-  // ---- 渲染：服务器表 ----
-  function renderServers() {
-    var tb = $('nl-servers');
-    var nowMs = Date.now();
-    var list = state.servers.slice().sort(function (a, b) { return (b.display_index || 0) - (a.display_index || 0); });
-    if (!list.length) { tb.innerHTML = '<tr><td colspan="6" class="nl-empty">暂无服务器数据（WebSocket 未收到数据）。</td></tr>'; return; }
-    tb.innerHTML = list.map(function (srv) {
-      var online = isOnline(srv, nowMs);
-      var h = state.histByServer[srv.id] || {};
-      var cur = online ? h.lastDelay : null;
-      var loss = online ? h.loss : null;
-      // 离线：延迟/丢包显示 --；探针不可达但 agent 仍上报时 loss 为 100.0%
-      return '<tr data-sid="' + srv.id + '" class="' + (state.detailServerId === srv.id ? 'sel' : '') + '">' +
-        '<td>' + esc(srv.name || ('#' + srv.id)) + (srv.country_code ? ' <span style="color:var(--nl-muted)">(' + esc(srv.country_code) + ')</span>' : '') + '</td>' +
-        '<td><span class="nl-pill ' + (online ? 'g' : 'r') + '">' + (online ? '在线' : '离线') + '</span></td>' +
-        '<td class="nl-num"><span class="nl-pill ' + latencyClass(cur) + '">' + fmtMs(cur) + '</span></td>' +
-        '<td class="nl-num">' + fmtMs(h.avgDelay) + '</td>' +
-        '<td class="nl-num"><span class="nl-pill ' + lossClass(loss) + '">' + fmtPct(loss) + '</span></td>' +
-        '<td style="color:var(--nl-muted)">' + state.services.length + ' 个探针 ›</td></tr>';
-    }).join('');
-    tb.querySelectorAll('tr[data-sid]').forEach(function (tr) {
-      tr.addEventListener('click', function () { openDetail(Number(tr.getAttribute('data-sid')), null); });
-    });
-    attachCardStrips();
-  }
-
-  // ---- 详情（Network 视图） ----
-  function openDetail(serverId, probeId) {
-    if (serverId != null) state.detailServerId = serverId;
-    if (probeId != null) state.detailProbeId = probeId;
-    var srv = state.servers.filter(function (x) { return x.id === state.detailServerId; })[0];
-    if (!srv && probeId == null) return;
-    $('nl-detail').style.display = 'block';
-    $('nl-detail-title').textContent = srv ? ('详情 · ' + srv.name) : '服务详情';
-    $('nl-detail-hint').textContent = '';
-    loadDetail();
-    var modal = $('nl-modal-overlay');
-    if (modal) modal.scrollTop = modal.scrollHeight;
-  }
-  // ---- 1小时实时：虚拟档 ----
-  // v2 API 的 period 只接受 1d/7d/30d，1h 会报错。所以 1h 档接口仍请求 1d，
-  // 再在前端只取最近 60 分钟。1d 在 TSDB 模式下约 30s/点，最近 1 小时约 120 个点；
-  // SQLite 模式下 1d 粒度可能更粗，1h 图点数会变少，见 README。
-  function apiPeriod(range) { return range === '1h' ? '1d' : range; }
-  function hourAgoMs() { return Date.now() - 3600 * 1000; }
   function tsToMs(ts) { var n = Number(ts); if (!isFinite(n)) return null; return n < 1e12 ? n * 1000 : n; }
-  function inLastHour(ts) { var m = tsToMs(ts); return m != null && m >= hourAgoMs(); }
-  function loadDetail() {
-    var sid = state.detailServerId, range = state.range;
-    if (sid == null) return;
-    showNotice('');
-    if (state.member === false && range !== '1d' && range !== '1h') {
-      showNotice('游客仅可查看 1h / 24h 数据，7d / 30d 需要登录。已自动切回 1h。');
-      state.range = '1h'; range = '1h'; renderRanges();
-    }
-    apiGet('/api/v1/server/' + sid + '/service?period=' + apiPeriod(range)).then(function (infos) {
-      var list = infos || [];
-      if (!list.length) {
-        $('nl-probes').innerHTML = '<div class="nl-empty">该服务器暂无探针数据（可能未配置监控服务，或该服务设置了 HideForGuest）。</div>';
-        $('nl-chart').innerHTML = ''; $('nl-chart-fallback').innerHTML = '';
-        return;
-      }
-      if (state.detailProbeId == null || !list.some(function (m) { return m.monitor_id === state.detailProbeId; })) {
-        state.detailProbeId = list[0].monitor_id;
-      }
-      renderProbes(list, range);
-      return renderChart(list, range);
-    }).catch(function (err) {
-      var msg = err && err.message ? err.message : String(err);
-      if (/only 1d data/i.test(msg)) {
-        showNotice('游客仅可查看 1h / 24h 数据，7d / 30d 需要登录。已自动切回 1h。');
-        state.range = '1h'; renderRanges(); loadDetail();
-      } else {
-        showNotice('详情加载失败：' + msg, true);
-      }
-    });
-  }
-  function renderProbes(monitors, range) {
-    var sid = state.detailServerId;
-    // 每探针的平均丢包来自 /service/:id/history 的 stats（按该服务器汇总）
-    // 1h 档：接口仍请求 period=1d，再只取最近 60 分钟的点算平均/丢包
-    var jobs = monitors.map(function (m) {
-      return apiGet('/api/v1/service/' + m.monitor_id + '/history?period=' + apiPeriod(range)).then(function (data) {
-        var sv = (data.servers || []).filter(function (x) { return x.server_id === sid; })[0];
-        var pts = sv ? sv.stats.data_points || [] : [];
-        if (range === '1h') pts = pts.filter(function (p) { return inLastHour(p.ts); });
-        return { monitor_id: m.monitor_id, stats: sv ? sv.stats : null, points: pts };
-      }).catch(function () { return { monitor_id: m.monitor_id, stats: null, points: [] }; });
-    });
-    Promise.all(jobs).then(function (hist) {
-      var byId = {};
-      hist.forEach(function (h) { byId[h.monitor_id] = h; });
-      $('nl-probes').innerHTML = monitors.map(function (m) {
-        var pairs = [];
-        (m.created_at || []).forEach(function (ts, i) {
-          var v = m.avg_delay ? m.avg_delay[i] : null;
-          if (typeof v !== 'number' || isNaN(v)) return;
-          if (range === '1h' && !inLastHour(ts)) return;
-          pairs.push(v);
-        });
-        var delays = pairs;
-        var last = delays.length ? delays[delays.length - 1] : null;
-        var mn = delays.length ? Math.min.apply(null, delays) : null;
-        var mx = delays.length ? Math.max.apply(null, delays) : null;
-        var avg1h = delays.length ? delays.reduce(function (a, b) { return a + b; }, 0) / delays.length : null;
-        var h = byId[m.monitor_id] || {};
-        var st = h.stats || {};
-        var pts = h.points || [];
-        var loss = null;
-        if (range === '1h') {
-          loss = pts.length ? (pts.filter(function (p) { return p.status === 0; }).length / pts.length) * 100 : null;
-        } else {
-          loss = (st.total_up != null && (st.total_up + (st.total_down || 0)) > 0)
-            ? (st.total_down / (st.total_up + st.total_down)) * 100 : null;
-        }
-        var svc = state.services.filter(function (x) { return x._id === m.monitor_id; })[0];
-        return '<button class="nl-probe' + (state.detailProbeId === m.monitor_id ? ' sel' : '') + '" type="button" data-mid="' + m.monitor_id + '">' +
-          '<div class="nl-pname">' + esc(m.monitor_name || (svc ? svc.service_name : ('探针 ' + m.monitor_id))) + '</div>' +
-          '<div class="nl-pmeta">最近延迟 <b>' + fmtMs(last) + '</b> · 最低 ' + fmtMs(mn) + ' / 最高 ' + fmtMs(mx) + '<br>' +
-          '平均延迟 ' + fmtMs(range === '1h' ? avg1h : st.avg_delay) + ' · 平均丢包 <b>' + fmtPct(loss) + '</b>' + (range === '1h' ? ' · 1小时实时' : '') + '</div></button>';
-      }).join('');
-      $('nl-probes').querySelectorAll('.nl-probe').forEach(function (el) {
-        el.addEventListener('click', function () {
-          state.detailProbeId = Number(el.getAttribute('data-mid'));
-          renderProbes(monitors, range);
-          renderChart(monitors, range);
-        });
-      });
-      $('nl-detail-hint').textContent = range === '1h'
-        ? '1小时实时：只取最近 60 分钟的数据（TSDB 模式约 30s/点，约 120 个点），每 30 秒自动刷新。点探针只看它的丢包面积；图例点击可开关延迟曲线。丢包按桶统计（桶内失败记 100%，成功记 0%），平均丢包 = 失败桶占比。'
-        : '提示：点探针只看它的丢包面积；图例点击可开关延迟曲线。丢包按桶统计（桶内失败记 100%，成功记 0%），平均丢包 = 失败桶占比。';
-    });
-  }
-  function downsample(points, maxN) {
-    if (points.length <= maxN) return points;
-    var step = Math.ceil(points.length / maxN), out = [];
-    for (var i = 0; i < points.length; i += step) out.push(points[i]);
-    return out;
-  }
-  function renderChart(monitors, range) {
-    var sid = state.detailServerId;
-    var jobs = monitors.map(function (m) {
-      return apiGet('/api/v1/service/' + m.monitor_id + '/history?period=' + apiPeriod(range)).then(function (data) {
-        var sv = (data.servers || []).filter(function (x) { return x.server_id === sid; })[0];
-        var pts = sv && sv.stats ? sv.stats.data_points || [] : [];
-        if (range === '1h') pts = pts.filter(function (p) { return inLastHour(p.ts); });
-        return { monitor_id: m.monitor_id, points: pts };
-      }).catch(function () { return { monitor_id: m.monitor_id, points: [] }; });
-    });
-    return Promise.all(jobs).then(function (hist) {
-      var byId = {};
-      hist.forEach(function (h) { byId[h.monitor_id] = h.points; });
-      var colors = themeColors();
-      // Peak cut：按当前范围全部延迟值的 P95 截断（1h 档只算最近 60 分钟）
-      var allDelays = [];
-      monitors.forEach(function (m) {
-        (m.created_at || []).forEach(function (ts, i) {
-          var v = m.avg_delay ? m.avg_delay[i] : null;
-          if (typeof v !== 'number') return;
-          if (range === '1h' && !inLastHour(ts)) return;
-          allDelays.push(v);
-        });
-      });
-      var cap = state.peakCut ? percentile(allDelays, CFG.peakCut.percentile) : null;
-      var palette = ['#3b82f6', '#22c55e', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6'];
-      var latencySeries = monitors.map(function (m, idx) {
-        var pts = [];
-        (m.created_at || []).forEach(function (ts, i) {
-          var v = m.avg_delay ? m.avg_delay[i] : null;
-          if (typeof v !== 'number') return;
-          if (range === '1h' && !inLastHour(ts)) return;
-          if (cap != null && v > cap) v = cap;
-          pts.push([tsToMs(ts), Math.round(v * 10) / 10]);
-        });
-        return {
-          name: (m.monitor_name || ('探针 ' + m.monitor_id)) + ' 延迟',
-          type: 'line', yAxisIndex: 0, showSymbol: false, sampling: 'lttb',
-          lineStyle: { width: 1.8 }, itemStyle: { color: palette[idx % palette.length] },
-          data: downsample(pts, CFG.maxDetailPoints)
-        };
-      });
-      // 丢包面积：只画选中探针（与官方前端一致：单选显示丢包面积，多选只显示延迟线）
-      var lossSeries = [];
-      var selPts = byId[state.detailProbeId] || [];
-      if (selPts.length) {
-        lossSeries.push({
-          name: '丢包率', type: 'line', yAxisIndex: 1, showSymbol: false, step: 'end',
-          areaStyle: { opacity: 0.18 }, lineStyle: { width: 1.5, color: colors.red },
-          itemStyle: { color: colors.red },
-          data: downsample(selPts.map(function (p) { return [tsToMs(p.ts), p.status === 1 ? 0 : 100]; }), CFG.maxDetailPoints)
-        });
-      }
-      var selName = (monitors.filter(function (m) { return m.monitor_id === state.detailProbeId; })[0] || {}).monitor_name || '';
-      var note = cap != null ? ' · Peak cut 已开启（延迟按 P95 ≈ ' + fmtMs(cap) + ' 截断）' : '';
-      window.__nlLoadECharts(function (ok) {
-        var box = $('nl-chart'), fb = $('nl-chart-fallback');
-        if (!ok || !window.echarts) {
-          box.innerHTML = '<div class="nl-empty">图表库（ECharts）加载失败，已降级为数据表。请检查 jsdelivr / unpkg 是否可达。</div>';
-          fb.innerHTML = fallbackTable(monitors, byId);
-          return;
-        }
-        fb.innerHTML = '';
-        if (state.chart) { try { state.chart.dispose(); } catch (e) {} }
-        var chart = echarts.init(box, null, { renderer: 'canvas' });
-        state.chart = chart;
-        chart.setOption({
-          animation: false,
-          grid: { left: 56, right: 56, top: 34, bottom: 30 },
-          tooltip: {
-            trigger: 'axis',
-            valueFormatter: function (v) { return v == null ? '--' : v; },
-            axisPointer: { type: 'cross' }
-          },
-          legend: { top: 0, textStyle: { color: colors.fg, fontSize: 11 }, selectedMode: true },
-          xAxis: { type: 'time', axisLabel: { color: colors.muted, fontSize: 11 }, splitLine: { show: false } },
-          yAxis: [
-            { type: 'value', name: '延迟 ms', min: 0, axisLabel: { color: colors.muted, fontSize: 11 }, splitLine: { lineStyle: { color: colors.border } } },
-            { type: 'value', name: '丢包 %', min: 0, max: 100, axisLabel: { color: colors.muted, fontSize: 11, formatter: '{value}%' }, splitLine: { show: false } }
-          ],
-          series: latencySeries.concat(lossSeries)
-        });
-        chart.setOption({ title: { text: (selName ? selName + ' · ' : '') + rangeLabel(range) + note, left: 'center', top: 0, textStyle: { color: colors.muted, fontSize: 11, fontWeight: 'normal' } } });
-        chart.resize();
-      });
-    });
-  }
-  function rangeLabel(v) { var r = CFG.ranges.filter(function (x) { return x.value === v; })[0]; return r ? r.label : v; }
-  function fallbackTable(monitors, byId) {
-    // ECharts 不可用时的降级：按天/小时聚合的平均延迟与丢包
-    var rows = monitors.map(function (m) {
-      var delays = (m.avg_delay || []).filter(function (v) { return typeof v === 'number'; });
-      var avg = delays.length ? delays.reduce(function (a, b) { return a + b; }, 0) / delays.length : null;
-      var pts = byId[m.monitor_id] || [];
-      var fail = pts.filter(function (p) { return p.status === 0; }).length;
-      var loss = pts.length ? (fail / pts.length) * 100 : null;
-      return '<tr><td>' + esc(m.monitor_name || ('探针 ' + m.monitor_id)) + '</td><td>' + fmtMs(avg) + '</td><td>' + fmtPct(loss) + '</td><td>' + pts.length + '</td></tr>';
-    }).join('');
-    return '<table class="nl-chart-fallback"><thead><tr><th>探针</th><th>平均延迟</th><th>平均丢包</th><th>数据点</th></tr></thead><tbody>' + rows + '</tbody></table>';
-  }
-  // ---- 范围 / Peak cut / 面板开关 ----
-  function renderRanges() {
-    var w = $('nl-range-wrap');
-    w.innerHTML = CFG.ranges.map(function (r) {
-      var dis = (state.member === false && r.value !== '1d' && r.value !== '1h') ? ' disabled title="游客仅可查看 1h / 24h，7d/30d 需要登录"' : '';
-      return '<button class="nl-btn' + (state.range === r.value ? ' active' : '') + '" type="button" data-range="' + r.value + '"' + dis + '>' + r.label + '</button>';
-    }).join('');
-    w.querySelectorAll('[data-range]').forEach(function (b) {
-      b.addEventListener('click', function () {
-        state.range = b.getAttribute('data-range');
-        renderRanges();
-        if (state.detailServerId != null) loadDetail(); else loadAll();
-      });
-    });
-    var pb = $('nl-peak-btn');
-    pb.textContent = 'Peak cut：' + (state.peakCut ? '开' : '关');
-  }
-  function openModal() {
-    $('nl-modal-overlay').classList.add('show');
-    renderRanges();
-    loadAll();
-    if (state.chart) state.chart.resize();
-  }
-  function closeModal() { $('nl-modal-overlay').classList.remove('show'); }
+
   // ---- 首页服务器卡片延迟条：地区实时值（尽力而为） ----
   // 每张卡内最底部按地区各一行（行数 = 后端服务分组数，动态变），每行都是截图
   // 样式：第一行分左右两半（左半：地区名 + 延迟值，右半：丢包率），下面左右两条 12 段分段柱
@@ -1015,11 +442,9 @@ var NezhaLatencyConfig = Object.assign({
   // 视为过期显示 --），丢包 = 最近 1 小时内该组点的 down/(up+down)；分段柱 =
   // 该地区最近 24 小时 12 桶（每桶 2 小时），每桶延迟 = 桶内有效点平均延迟，
   // 丢包 = 桶内 down/(up+down)，桶内无有效点时该段为灰色。只计近期有效的服务，
-  // 失联的 v6 不混进组里；某组全部服务无效该行显示 --。面板里的服务卡片仍保留
-  // 分段柱，面板服务器表仍保留 24h 数值。条挂在挂载元素的最末尾（见
+  // 失联的 v6 不混进组里；某组全部服务无效该行显示 --。条挂在挂载元素的最末尾（见
   // attachCardStrips），React 重建后补挂也会把它挪回最底部。
-  // 条只作展示、不可点：不绑点击，点条会冒泡到卡片本身（官方服务器详情页），
-  // 不再打开延迟详情面板（2026-11-21 用户要求取消点条进详情）。
+  // 条只作展示、不可点：不绑点击，点条会冒泡到卡片本身（官方服务器详情页）。
   // 根因（2026-11-21 实测前端 bundle /assets/index.CxhV59WK.js）：nezha-dash
   // 1dd038b 首页卡片根本不是 <a href="/server/N">，而是 Card <div>（class 含
   // cursor-pointer），点击靠 React Router navigate(`/server/${id}`)；旧代码的
@@ -1196,34 +621,20 @@ var NezhaLatencyConfig = Object.assign({
     var fab = $('nl-fab');
     if (fab) fab.addEventListener('click', function () { toggleStrips(); });
     applyStripsEnabled();
-    $('nl-close-btn').addEventListener('click', closeModal);
-    $('nl-modal-overlay').addEventListener('click', function (e) { if (e.target === this) closeModal(); });
-    $('nl-refresh-btn').addEventListener('click', function () { loadAll(); if (state.detailServerId != null) loadDetail(); });
-    $('nl-peak-btn').addEventListener('click', function () {
-      state.peakCut = !state.peakCut; renderRanges();
-      if (state.detailServerId != null) loadDetail();
-    });
-    document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
-    window.addEventListener('resize', function () { if (state.chart) state.chart.resize(); scheduleAttach(); }); // 窗口缩放过手机/电脑分界时重算柱体段数
-    // 主题变化时重绘图表颜色
-    var mo = new MutationObserver(function () { if (state.chart && $('nl-modal-overlay').classList.contains('show') && state.detailServerId != null) loadDetail(); });
-    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    window.addEventListener('resize', function () { scheduleAttach(); }); // 窗口缩放过手机/电脑分界时重算柱体段数
     if (CFG.refreshSec > 0) {
       state.refreshTimer = setInterval(function () {
         if (document.hidden) return;
-        loadAll(); // 首页卡片条也要定时刷新；详情只在面板打开时刷新
-        if ($('nl-modal-overlay').classList.contains('show') && state.detailServerId != null) loadDetail();
+        loadStripData(); // 首页卡片条定时刷新
       }, CFG.refreshSec * 1000);
     }
     // 首页卡片条：页面渲染后尽力挂上（React 会重建卡片 DOM，MutationObserver +
     // 5 秒轮询补挂）
     watchHomeCards();
     setInterval(attachCardStrips, 5000);
-    // 首屏就加载数据：卡片条不依赖打开面板也能显示
-    loadAll();
-    window.NezhaLatency = { open: openModal, close: closeModal, refresh: loadAll, toggleStrips: toggleStrips, config: CFG, state: state };
-    renderRanges();
-    checkLogin().then(function () { renderRanges(); });
+    // 首屏就加载数据
+    loadStripData();
+    window.NezhaLatency = { refresh: loadStripData, toggleStrips: toggleStrips, config: CFG, state: state };
   }
   function boot() {
     if (document.getElementById('root')) { init(); return; }
@@ -1239,7 +650,7 @@ var NezhaLatencyConfig = Object.assign({
 </script>
 
 <script>
-// ================= 4. 流量进度条（合并自流量项目） =================
+// ================= 3. 流量进度条（合并自流量项目） =================
 // 来源：gugetang/NeZha-UI-ShowTraffic traffic-progress.js v20260803，
 // 合并时与上游 ziwiwiz/nezha-ui@main 同一文件一字不差；只改了两处：
 // (1) 挂载位置：不再插到统计区后面（会挤进统计列），而是作为卡片的直接子
